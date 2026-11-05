@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +8,6 @@ import '../models/it_asset.dart';
 
 class AssetFormPage extends ConsumerStatefulWidget {
   const AssetFormPage({super.key});
-
   @override
   ConsumerState<AssetFormPage> createState() => _AssetFormPageState();
 }
@@ -26,30 +23,18 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _notes = TextEditingController();
   String _status = 'Operativo';
 
-  Uint8List? _imageBytes;
-  String? _imageName;
-  String? _imageMime;
-
+  final List<XFile> _files = [];
   bool _saving = false;
   String? _error;
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImages(ImageSource source) async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
-      maxWidth: 1600,
-      imageQuality: 85,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    setState(() {
-      _imageBytes = bytes;
-      _imageName = picked.name.isEmpty ? 'foto.jpg' : picked.name;
-      _imageMime = picked.mimeType ??
-          (picked.path.toLowerCase().endsWith('.png')
-              ? 'image/png'
-              : 'image/jpeg');
-    });
+    final picked = source == ImageSource.gallery
+        ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85)
+        : [if (await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85) != null) (await picker.pickImage(source: ImageSource.camera))!]
+          .whereType<XFile>().toList();
+    if (picked.isEmpty) return;
+    setState(() => _files.addAll(picked));
   }
 
   Future<void> _submit() async {
@@ -71,14 +56,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         notes: _notes.text.trim(),
       ));
 
-      if (_imageBytes != null && _imageName != null && _imageMime != null) {
+      if (_files.isNotEmpty) {
         try {
-          await api.subirImagen(asset.assetTag, _imageBytes!, _imageName!, _imageMime!);
+          await api.subirImagenes(asset.assetTag, _files);
         } catch (e) {
-          // El activo ya fue creado; sólo falló la imagen
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Activo creado, pero falló la imagen: $e')),
+              SnackBar(content: Text('Activo creado, pero fallaron las fotos: $e')),
             );
           }
         }
@@ -98,65 +82,85 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
-  Widget _imagePicker() {
-    final hasImage = _imageBytes != null;
-    return GestureDetector(
-      onTap: () => _showImageSourceSheet(),
-      child: Container(
-        height: 160,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFFE5E7EB),
-            style: BorderStyle.solid,
+  Widget _imagesGrid() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _showSourceSheet,
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_photo_alternate_outlined,
+                    size: 32, color: Color(0xFF6B7280)),
+                SizedBox(height: 6),
+                Text('Agregar fotos',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+                SizedBox(height: 2),
+                Text('Cámara o galería (múltiples)',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              ],
+            ),
           ),
         ),
-        child: hasImage
-            ? Stack(
-                fit: StackFit.expand,
+        if (_files.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 84,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _files.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) => Stack(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(_imageBytes!, fit: BoxFit.cover),
+                  FutureBuilder(
+                    future: _files[i].readAsBytes(),
+                    builder: (_, snap) => snap.hasData
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(snap.data!,
+                                width: 84, height: 84, fit: BoxFit.cover),
+                          )
+                        : Container(
+                            width: 84,
+                            height: 84,
+                            color: Colors.grey.shade200,
+                          ),
                   ),
                   Positioned(
-                    top: 8,
-                    right: 8,
+                    top: 2,
+                    right: 2,
                     child: Material(
                       color: Colors.black54,
                       shape: const CircleBorder(),
-                      child: IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white, size: 18),
-                        onPressed: () => setState(() {
-                          _imageBytes = null;
-                          _imageName = null;
-                          _imageMime = null;
-                        }),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => setState(() => _files.removeAt(i)),
+                        child: const Padding(
+                          padding: EdgeInsets.all(3),
+                          child:
+                              Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
                 ],
-              )
-            : const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_a_photo_outlined, size: 36, color: Color(0xFF6B7280)),
-                  SizedBox(height: 6),
-                  Text('Agregar foto',
-                      style: TextStyle(
-                          fontSize: 13, color: Color(0xFF6B7280))),
-                  SizedBox(height: 2),
-                  Text('Cámara o galería',
-                      style: TextStyle(
-                          fontSize: 11, color: Color(0xFF9CA3AF))),
-                ],
               ),
-      ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-  void _showImageSourceSheet() {
+  void _showSourceSheet() {
     showModalBottomSheet<void>(
       context: context,
       builder: (_) => SafeArea(
@@ -168,7 +172,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               title: const Text('Tomar foto'),
               onTap: () {
                 Navigator.pop(context);
-                _pickImage(ImageSource.camera);
+                _pickImages(ImageSource.camera);
               },
             ),
             ListTile(
@@ -176,23 +180,9 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               title: const Text('Elegir de galería'),
               onTap: () {
                 Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
+                _pickImages(ImageSource.gallery);
               },
             ),
-            if (_imageBytes != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Quitar foto',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _imageBytes = null;
-                    _imageName = null;
-                    _imageMime = null;
-                  });
-                },
-              ),
           ],
         ),
       ),
@@ -218,29 +208,32 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 child: Text(_error!,
                     style: const TextStyle(color: Colors.red)),
               ),
-            _imagePicker(),
+            _imagesGrid(),
             const SizedBox(height: 20),
-            _SectionLabel('Identificación'),
+            const _SectionLabel('Identificación'),
             const SizedBox(height: 8),
             TextFormField(
               controller: _tag,
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(labelText: 'Asset Tag *'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
             ),
             const SizedBox(height: 10),
             TextFormField(
               controller: _serial,
               decoration: const InputDecoration(labelText: 'Número de serie *'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
             ),
             const SizedBox(height: 20),
-            _SectionLabel('Equipo'),
+            const _SectionLabel('Equipo'),
             const SizedBox(height: 8),
             TextFormField(
               controller: _category,
               decoration: const InputDecoration(labelText: 'Categoría *'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
             ),
             const SizedBox(height: 10),
             Row(
@@ -257,7 +250,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               ],
             ),
             const SizedBox(height: 20),
-            _SectionLabel('Ubicación y estado'),
+            const _SectionLabel('Ubicación y estado'),
             const SizedBox(height: 8),
             TextFormField(
               controller: _location,
@@ -269,7 +262,8 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               decoration: const InputDecoration(labelText: 'Estado'),
               items: const [
                 DropdownMenuItem(value: 'Operativo', child: Text('Operativo')),
-                DropdownMenuItem(value: 'En Revisión', child: Text('En Revisión')),
+                DropdownMenuItem(
+                    value: 'En Revisión', child: Text('En Revisión')),
                 DropdownMenuItem(value: 'Retirado', child: Text('Retirado')),
               ],
               onChanged: (v) => setState(() => _status = v ?? 'Operativo'),

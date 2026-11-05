@@ -1,3 +1,16 @@
+class ItAssetImage {
+  final int id;
+  final String filename;
+  const ItAssetImage({required this.id, required this.filename});
+
+  factory ItAssetImage.fromJson(Map<String, dynamic> j) => ItAssetImage(
+        id: j['id'] as int,
+        filename: j['filename'] as String,
+      );
+
+  String get url => '/uploads/$filename';
+}
+
 class ItAsset {
   final int id;
   final String assetTag;
@@ -8,7 +21,7 @@ class ItAsset {
   final String? location;
   final String? status;
   final String? notes;
-  final String? imagePath;
+  final List<ItAssetImage> images;
 
   const ItAsset({
     required this.id,
@@ -20,7 +33,7 @@ class ItAsset {
     this.location,
     this.status,
     this.notes,
-    this.imagePath,
+    this.images = const [],
   });
 
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
@@ -33,11 +46,13 @@ class ItAsset {
         location: j['location'] as String?,
         status: j['status'] as String?,
         notes: j['notes'] as String?,
-        imagePath: j['image_path'] as String?,
+        images: ((j['images'] as List<dynamic>?) ?? [])
+            .map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
-  /// URL pública de la imagen (relativa al host donde corre la app).
-  String? get imageUrl => imagePath == null ? null : '/uploads/$imagePath';
+  /// Primera imagen (para thumbnail).
+  String? get imageUrl => images.isNotEmpty ? images.first.url : null;
 }
 
 class ItAssetCreate {

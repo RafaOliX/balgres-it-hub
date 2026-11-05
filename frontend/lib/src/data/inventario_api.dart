@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/it_asset.dart';
 
@@ -62,24 +63,35 @@ class InventarioApi {
     await _dio.delete<void>('/inventario/$tag');
   }
 
-  Future<ItAsset> subirImagen(String tag, Uint8List bytes, String filename,
-      String mimeType) async {
-    final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(
+  /// Sube N imágenes en una sola petición multipart.
+  Future<List<ItAssetImage>> subirImagenes(String tag, List<XFile> files) async {
+    final parts = <MultipartFile>[];
+    for (final f in files) {
+      final bytes = await f.readAsBytes();
+      final mime = f.mimeType ??
+          (f.name.toLowerCase().endsWith('.png')
+              ? 'image/png'
+              : f.name.toLowerCase().endsWith('.webp')
+                  ? 'image/webp'
+                  : 'image/jpeg');
+      parts.add(MultipartFile.fromBytes(
         bytes,
-        filename: filename,
-        contentType: DioMediaType.parse(mimeType),
-      ),
-    });
-    final r = await _dio.post<Map<String, dynamic>>(
-      '/inventario/$tag/image',
+        filename: f.name,
+        contentType: DioMediaType.parse(mime),
+      ));
+    }
+    final form = FormData.fromMap({'files': parts});
+    final r = await _dio.post<List<dynamic>>(
+      '/inventario/$tag/images',
       data: form,
       options: Options(contentType: 'multipart/form-data'),
     );
-    return ItAsset.fromJson(r.data!);
+    return (r.data ?? [])
+        .map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<void> eliminarImagen(String tag) async {
-    await _dio.delete<void>('/inventario/$tag/image');
+  Future<void> eliminarImagen(String tag, int imageId) async {
+    await _dio.delete<void>('/inventario/$tag/images/$imageId');
   }
 }

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../models/it_asset.dart';
 
-/// Thumbnail cuadrado de un activo. Si tiene imagen, la muestra; si no,
-/// un ícono gris con el color del estado.
 class AssetThumbnail extends StatelessWidget {
   final ItAsset asset;
   final double size;
@@ -28,21 +26,6 @@ class AssetThumbnail extends StatelessWidget {
                 asset.imageUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _placeholder(color),
-                loadingBuilder: (_, child, p) => p == null
-                    ? child
-                    : Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            value: p.expectedTotalBytes != null
-                                ? p.cumulativeBytesLoaded /
-                                    p.expectedTotalBytes!
-                                : null,
-                          ),
-                        ),
-                      ),
               )
             : _placeholder(color),
       ),

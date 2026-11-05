@@ -1,11 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../data/inventario_api.dart';
 import '../data/providers.dart';
 import '../models/it_asset.dart';
 
@@ -34,9 +31,9 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       _error = null;
     });
     try {
-      final api = ref.read(inventarioApiProvider);
-      final list = await api.buscar(widget.assetTag);
-      final exact = list.where((a) => a.assetTag == widget.assetTag).firstOrNull;
+      final list = await ref.read(inventarioApiProvider).buscar(widget.assetTag);
+      final exact =
+          list.where((a) => a.assetTag == widget.assetTag).firstOrNull;
       setState(() => _asset = exact);
       if (exact == null) setState(() => _error = 'Activo no encontrado');
     } catch (e) {
@@ -46,7 +43,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
-  Future<void> _cambiarImagen() async {
+  Future<void> _agregarImagenes() async {
     if (_asset == null) return;
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -61,30 +58,9 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Elegir de galería'),
+              title: const Text('Elegir de galería (múltiples)'),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
-            if (_asset!.imagePath != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Quitar foto',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  try {
-                    await ref
-                        .read(inventarioApiProvider)
-                        .eliminarImagen(_asset!.assetTag);
-                    _load();
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
-                      );
-                    }
-                  }
-                },
-              ),
           ],
         ),
       ),
@@ -92,27 +68,52 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     if (source == null) return;
 
     final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
-      maxWidth: 1600,
-      imageQuality: 85,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    final name = picked.name.isEmpty ? 'foto.jpg' : picked.name;
-    final mime = picked.mimeType ??
-        (picked.path.toLowerCase().endsWith('.png')
-            ? 'image/png'
-            : 'image/jpeg');
+    final picked = source == ImageSource.gallery
+        ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85)
+        : [if (await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85) != null) (await picker.pickImage(source: ImageSource.camera))!]
+            .whereType<XFile>().toList();
+    if (picked.isEmpty) return;
+
     try {
-      await ref
-          .read(inventarioApiProvider)
-          .subirImagen(_asset!.assetTag, bytes, name, mime);
+      await ref.read(inventarioApiProvider).subirImagenes(_asset!.assetTag, picked);
       _load();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al subir: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _eliminarImagen(ItAssetImage img) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar imagen'),
+        content: const Text('¿Borrar esta foto del activo?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref
+          .read(inventarioApiProvider)
+          .eliminarImagen(_asset!.assetTag, img.id);
+      _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
@@ -156,7 +157,8 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar activo'),
-        content: Text('¿Borrar ${_asset!.assetTag}? Esta acción no se puede deshacer.'),
+        content: Text(
+            '¿Borrar ${_asset!.assetTag} y todas sus fotos? Esta acción no se puede deshacer.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -216,7 +218,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _imagenGrande(),
+                    _galeriaFotos(),
                     const SizedBox(height: 16),
                     _card('Información', [
                       _kv('Tag', _asset!.assetTag),
@@ -249,60 +251,98 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     );
   }
 
-  Widget _imagenGrande() {
-    return GestureDetector(
-      onTap: _cambiarImagen,
-      child: Container(
-        height: 240,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: _asset!.imageUrl != null
-            ? Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(_asset!.imageUrl!, fit: BoxFit.cover),
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Material(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.edit, size: 14, color: Colors.white),
-                            SizedBox(width: 4),
-                            Text('Cambiar',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600)),
-                          ],
+  Widget _galeriaFotos() {
+    final imgs = _asset!.images;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('FOTOS',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: Color(0xFF6B7280))),
+              ),
+              TextButton.icon(
+                onPressed: _agregarImagenes,
+                icon: const Icon(Icons.add_a_photo_outlined, size: 16),
+                label: const Text('Agregar'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (imgs.isEmpty)
+            Container(
+              height: 100,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('Sin fotos',
+                  style:
+                      TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: imgs.length,
+              itemBuilder: (_, i) {
+                final img = imgs[i];
+                return Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        img.url,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image,
+                              color: Colors.grey),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              )
-            : const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_a_photo_outlined,
-                      size: 40, color: Color(0xFF6B7280)),
-                  SizedBox(height: 8),
-                  Text('Agregar foto',
-                      style: TextStyle(
-                          color: Color(0xFF6B7280),
-                          fontWeight: FontWeight.w500)),
-                ],
-              ),
+                    Positioned(
+                      top: 2,
+                      right: 2,
+                      child: Material(
+                        color: Colors.black54,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => _eliminarImagen(img),
+                          child: const Padding(
+                            padding: EdgeInsets.all(3),
+                            child: Icon(Icons.close,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+        ],
       ),
     );
   }
