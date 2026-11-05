@@ -1,0 +1,3 @@
+[submodule "modules/inventario"]
+	path = modules/inventario
+	url = git@github.com:RafaOliX/balgres-it-inventario.git
