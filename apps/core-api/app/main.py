@@ -12,7 +12,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # en prod, restringir al dominio real
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,8 +22,14 @@ app.add_middleware(
 async def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "core-api"}
 
-# Inicialización de módulos (crea tablas en DB)
-inventario_init_db()
+# Endpoint para la app Android
+@app.get("/app/version")
+async def app_version():
+    return {
+        "version": "1.0.0",
+        "min_version": "1.0.0",
+        "apk_url": "/apk/app-release.apk" # Ruta relativa servida por Caddy
+    }
 
-# Registro de routers de módulos
+inventario_init_db()
 app.include_router(inventario_router, prefix="/api")

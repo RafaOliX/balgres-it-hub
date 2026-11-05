@@ -18,4 +18,5 @@ RUN flutter build web --release --dart-define=API_BASE=/api
 FROM caddy:2-alpine
 COPY docker/Caddyfile.prod /etc/caddy/Caddyfile
 COPY --from=build /src/apps/shell/build/web /srv/web
+RUN mkdir -p /srv/uploads
 EXPOSE 80 443
