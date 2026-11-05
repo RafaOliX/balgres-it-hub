@@ -1,5 +1,5 @@
 """Modelos SQLModel del módulo inventario."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -9,11 +9,23 @@ class ItAssetImage(SQLModel, table=True):
     __tablename__ = "it_asset_images"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    asset_id: int = Field(foreign_key="it_assets.id", index=True)
+    asset_id: int = Field(foreign_key="it_assets.id", ondelete="CASCADE", index=True)
     filename: str = Field(max_length=256, index=True)
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     asset: Optional["ItAsset"] = Relationship(back_populates="images")
+
+
+class ItAssetHistory(SQLModel, table=True):
+    __tablename__ = "it_asset_history"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asset_id: int = Field(foreign_key="it_assets.id", ondelete="CASCADE", index=True)
+    field_name: str = Field(max_length=64)
+    old_value: Optional[str] = Field(default=None)
+    new_value: Optional[str] = Field(default=None)
+    changed_by: str = Field(max_length=64, default="admin") # Por ahora hardcodeado, luego usaremos el JWT
+    changed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ItAsset(SQLModel, table=True):

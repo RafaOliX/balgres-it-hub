@@ -1,4 +1,5 @@
 """Schemas Pydantic del módulo inventario."""
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,6 +9,16 @@ class ItAssetImageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     filename: str
+
+
+class ItAssetHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    field_name: str
+    old_value: Optional[str]
+    new_value: Optional[str]
+    changed_by: str
+    changed_at: datetime
 
 
 class ItAssetCreate(BaseModel):
@@ -22,8 +33,14 @@ class ItAssetCreate(BaseModel):
 
 
 class ItAssetUpdate(BaseModel):
-    location: Optional[str] = None
-    status: Optional[str] = None
+    # Ahora permite editar todos los campos (opcional)
+    asset_tag: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    brand: Optional[str] = Field(default=None, max_length=64)
+    model: Optional[str] = Field(default=None, max_length=128)
+    serial_number: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    location: Optional[str] = Field(default=None, max_length=128)
+    status: Optional[str] = Field(default=None, max_length=32)
     notes: Optional[str] = None
 
 
