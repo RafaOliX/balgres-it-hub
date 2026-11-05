@@ -16,7 +16,6 @@ class ItAssetCreate(BaseModel):
 
 
 class ItAssetUpdate(BaseModel):
-    """Sólo los campos que tu CLI dejaba actualizar."""
     location: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
@@ -34,3 +33,4 @@ class ItAssetRead(BaseModel):
     location: Optional[str]
     status: Optional[str]
     notes: Optional[str]
+    image_path: Optional[str]

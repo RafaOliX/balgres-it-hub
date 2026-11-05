@@ -16,3 +16,4 @@ class ItAsset(SQLModel, table=True):
     location: Optional[str] = Field(default=None, max_length=128)
     status: Optional[str] = Field(default="Operativo", max_length=32)
     notes: Optional[str] = Field(default=None)
+    image_path: Optional[str] = Field(default=None, max_length=256)
