@@ -20,6 +20,15 @@ class InventarioApi {
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  // ─── ESTE ERA EL QUE FALTABA ───
+  Future<List<ItAsset>> buscar(String q) async {
+    final r = await _dio.get<List<dynamic>>(
+      '/inventario/buscar',
+      queryParameters: {'q': q},
+    );
+    return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<ItAsset> crear(ItAssetCreate payload) async {
     final r = await _dio.post<Map<String, dynamic>>('/inventario/', data: payload.toJson());
     return ItAsset.fromJson(r.data!);
