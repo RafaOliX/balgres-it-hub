@@ -15,7 +15,6 @@ if [ ! -f .env.prod ]; then
   cp .env.prod.example .env.prod
   DB_PASS=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
   JWT_SEC=$(openssl rand -base64 48 | tr -d '/+=' | head -c 48)
-  # Usamos printf para evitar que el $ del hash se expanda
   {
     echo "DB_USER=inventario"
     printf 'DB_PASSWORD=%s\n' "$DB_PASS"
@@ -32,12 +31,13 @@ if grep -q "REEMPLAZA_CON_HASH_BCRYPT" .env.prod; then
   echo
   [ -n "$ADMIN_PASS" ] || { echo "ERROR: password vacío"; exit 1; }
   HASH=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$ADMIN_PASS")
-  # Reescribir la línea con printf para no expandir $
+  # CRÍTICO: escapar $ como $$ para que docker-compose no lo expanda
+  HASH_ESCAPED="${HASH//\$/\$\$}"
   grep -v '^BASIC_AUTH_HASH=' .env.prod > .env.prod.tmp
-  printf 'BASIC_AUTH_HASH=%s\n' "$HASH" >> .env.prod.tmp
+  printf 'BASIC_AUTH_HASH=%s\n' "$HASH_ESCAPED" >> .env.prod.tmp
   mv .env.prod.tmp .env.prod
   chmod 600 .env.prod
-  echo "    Hash guardado en .env.prod"
+  echo "    Hash guardado en .env.prod (escapado)"
 fi
 
 echo "==> Puerto 80:"
