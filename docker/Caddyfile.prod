@@ -2,7 +2,7 @@
     encode zstd gzip
 
     basic_auth /* {
-        admin REEMPLAZA_ESTO_CON_TU_HASH
+        admin {$BASIC_AUTH_HASH}
     }
 
     header {

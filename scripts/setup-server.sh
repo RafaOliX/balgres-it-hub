@@ -13,21 +13,37 @@ fi
 if [ ! -f .env.prod ]; then
   echo "==> Generando .env.prod con secretos aleatorios..."
   cp .env.prod.example .env.prod
-  sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)|" .env.prod
-  sed -i "s|JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '/+=' | head -c 48)|" .env.prod
+  DB_PASS=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+  JWT_SEC=$(openssl rand -base64 48 | tr -d '/+=' | head -c 48)
+  # Usamos printf para evitar que el $ del hash se expanda
+  {
+    echo "DB_USER=inventario"
+    printf 'DB_PASSWORD=%s\n' "$DB_PASS"
+    echo "DB_NAME=inventario_it"
+    printf 'JWT_SECRET=%s\n' "$JWT_SEC"
+    echo "BASIC_AUTH_HASH=REEMPLAZA_CON_HASH_BCRYPT"
+  } > .env.prod
   chmod 600 .env.prod
 fi
 
-if grep -q "REEMPLAZA_ESTO_CON_TU_HASH" docker/Caddyfile.prod; then
-  echo "ERROR: docker/Caddyfile.prod tiene el hash sin reemplazar."
-  echo "  Genera: docker run --rm caddy:2-alpine caddy hash-password --plaintext 'TuPass'"
-  exit 1
+if grep -q "REEMPLAZA_CON_HASH_BCRYPT" .env.prod; then
+  echo "==> Generando hash de basic auth..."
+  read -rsp "Password para usuario 'admin': " ADMIN_PASS
+  echo
+  [ -n "$ADMIN_PASS" ] || { echo "ERROR: password vacío"; exit 1; }
+  HASH=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$ADMIN_PASS")
+  # Reescribir la línea con printf para no expandir $
+  grep -v '^BASIC_AUTH_HASH=' .env.prod > .env.prod.tmp
+  printf 'BASIC_AUTH_HASH=%s\n' "$HASH" >> .env.prod.tmp
+  mv .env.prod.tmp .env.prod
+  chmod 600 .env.prod
+  echo "    Hash guardado en .env.prod"
 fi
 
 echo "==> Puerto 80:"
 ss -tlnp 2>/dev/null | grep ":80 " || echo "  OK libre"
 
-echo "==> Build (primera vez ~10 min)..."
+echo "==> Build (primera vez ~10 min por Flutter SDK)..."
 cd docker
 docker compose -f docker-compose.prod.yml --env-file ../.env.prod build
 
@@ -38,5 +54,5 @@ echo "==> Estado:"
 docker compose -f docker-compose.prod.yml ps
 
 echo
-echo "✔ Verifica: curl -u admin:TuPass http://localhost/api/inventario/health"
+echo "✔ Verifica: curl -u admin:TU_PASSWORD http://localhost/api/inventario/health"
 echo "✔ Abre:     http://<IP-del-servidor>/"

@@ -1,19 +1,49 @@
-# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 name: balgres-it-hub
 
 services:
-  backend:
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-    volumes: []   # sin binds de dev
-    restart: unless-stopped
-
   db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      ENVIRONMENT: production
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   caddy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    environment:
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
     restart: unless-stopped
     volumes:
-      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
-      - ../apps/shell/build/web:/srv/web:ro
       - caddy_data:/data
       - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
