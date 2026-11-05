@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,7 +13,11 @@ class InventarioApi {
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 20),
           receiveTimeout: const Duration(seconds: 30),
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            // Autenticación Basic para pasar el proxy de Caddy
+            'Authorization': 'Basic ${base64Encode(utf8.encode('admin:Balgres2026!'))}',
+          },
         ));
 
   Future<List<ItAsset>> listar() async {
@@ -20,7 +25,6 @@ class InventarioApi {
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  // ─── ESTE ERA EL QUE FALTABA ───
   Future<List<ItAsset>> buscar(String q) async {
     final r = await _dio.get<List<dynamic>>(
       '/inventario/buscar',
