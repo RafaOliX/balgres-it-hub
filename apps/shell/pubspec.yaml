@@ -1,10 +1,10 @@
 name: balgres_it_shell
 description: Shell Flutter que agrega los módulos de balgres-it-hub
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
-  sdk: '>=3.5.0 <4.0.0'
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
@@ -13,6 +13,8 @@ dependencies:
   go_router: ^14.3.0
   dio: ^5.7.0
   flutter_riverpod: ^2.5.1
+  package_info_plus: ^8.0.2
+  url_launcher: ^6.3.0
 
   balgres_it_inventario:
     path: ../../modules/inventario/frontend

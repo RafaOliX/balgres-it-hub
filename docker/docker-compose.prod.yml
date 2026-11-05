@@ -23,9 +23,12 @@ services:
       DATABASE_URL: postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       JWT_SECRET: ${JWT_SECRET}
       ENVIRONMENT: production
+      UPLOADS_DIR: /app/uploads
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
 
   caddy:
@@ -35,15 +38,14 @@ services:
     environment:
       BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
     ports:
-      - "80:80"
+      - "8091:80"
     depends_on:
       - backend
     restart: unless-stopped
     volumes:
-      - caddy_data:/data
-      - caddy_config:/config
+      - uploads:/srv/uploads:ro
+      - ../apps/shell/build/app/outputs/flutter-apk:/srv/apk:ro
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
+  uploads:

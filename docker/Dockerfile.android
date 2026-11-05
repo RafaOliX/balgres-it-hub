@@ -1,0 +1,17 @@
+FROM ghcr.io/cirruslabs/flutter:stable
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+RUN yes | sdkmanager --licenses
+
+WORKDIR /src
+
+COPY modules/inventario/frontend /src/modules/inventario/frontend
+COPY apps/shell /src/apps/shell
+
+WORKDIR /src/apps/shell
+
+# Pre-descargar dependencias en la imagen (caché)
+RUN flutter pub get
+
+# El comando real se pasa en el docker run
+CMD ["flutter", "build", "apk", "--release"]
