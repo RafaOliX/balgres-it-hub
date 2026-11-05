@@ -1,0 +1,21 @@
+# ─── Etapa 1: build de Flutter Web ───
+FROM ghcr.io/cirruslabs/flutter:stable AS build
+
+WORKDIR /src
+
+COPY modules/inventario/frontend/pubspec.yaml /src/modules/inventario/frontend/pubspec.yaml
+COPY apps/shell/pubspec.yaml /src/apps/shell/pubspec.yaml
+
+WORKDIR /src/apps/shell
+RUN flutter pub get
+
+COPY modules/inventario/frontend /src/modules/inventario/frontend
+COPY apps/shell /src/apps/shell
+
+RUN flutter build web --release --dart-define=API_BASE=/api
+
+# ─── Etapa 2: imagen final ligera ───
+FROM caddy:2-alpine
+COPY docker/Caddyfile.prod /etc/caddy/Caddyfile
+COPY --from=build /src/apps/shell/build/web /srv/web
+EXPOSE 80 443
