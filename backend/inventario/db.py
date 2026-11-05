@@ -51,3 +51,6 @@ def apply_migrations() -> None:
             );
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_it_asset_history_asset_id ON it_asset_history(asset_id);"))
+	# db.py dentro de apply_migrations()
+        conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;"))
+        conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS unit VARCHAR(32) DEFAULT 'Unidad';"))

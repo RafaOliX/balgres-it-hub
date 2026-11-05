@@ -1,15 +1,12 @@
 """Schemas Pydantic del módulo inventario."""
 from datetime import datetime
 from typing import List, Optional
-
 from pydantic import BaseModel, ConfigDict, Field
-
 
 class ItAssetImageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     filename: str
-
 
 class ItAssetHistoryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -20,7 +17,6 @@ class ItAssetHistoryRead(BaseModel):
     changed_by: str
     changed_at: datetime
 
-
 class ItAssetCreate(BaseModel):
     asset_tag: str = Field(min_length=1, max_length=64)
     category: str = Field(min_length=1, max_length=64)
@@ -30,10 +26,10 @@ class ItAssetCreate(BaseModel):
     location: Optional[str] = None
     status: Optional[str] = "Operativo"
     notes: Optional[str] = None
-
+    quantity: Optional[int] = 1
+    unit: Optional[str] = "Unidad"
 
 class ItAssetUpdate(BaseModel):
-    # Ahora permite editar todos los campos (opcional)
     asset_tag: Optional[str] = Field(default=None, min_length=1, max_length=64)
     category: Optional[str] = Field(default=None, min_length=1, max_length=64)
     brand: Optional[str] = Field(default=None, max_length=64)
@@ -42,11 +38,11 @@ class ItAssetUpdate(BaseModel):
     location: Optional[str] = Field(default=None, max_length=128)
     status: Optional[str] = Field(default=None, max_length=32)
     notes: Optional[str] = None
-
+    quantity: Optional[int] = None
+    unit: Optional[str] = None
 
 class ItAssetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
     asset_tag: str
     category: str
@@ -57,3 +53,5 @@ class ItAssetRead(BaseModel):
     status: Optional[str]
     notes: Optional[str]
     images: List[ItAssetImageRead] = []
+    quantity: Optional[int] = 1
+    unit: Optional[str] = "Unidad"

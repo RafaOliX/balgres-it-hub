@@ -2,12 +2,7 @@ class ItAssetImage {
   final int id;
   final String filename;
   const ItAssetImage({required this.id, required this.filename});
-
-  factory ItAssetImage.fromJson(Map<String, dynamic> j) => ItAssetImage(
-        id: j['id'] as int,
-        filename: j['filename'] as String,
-      );
-
+  factory ItAssetImage.fromJson(Map<String, dynamic> j) => ItAssetImage(id: j['id'], filename: j['filename']);
   String get url => '/uploads/$filename';
 }
 
@@ -22,18 +17,14 @@ class ItAsset {
   final String? status;
   final String? notes;
   final List<ItAssetImage> images;
+  final int quantity;
+  final String unit;
 
   const ItAsset({
-    required this.id,
-    required this.assetTag,
-    required this.category,
-    required this.brand,
-    required this.model,
-    required this.serialNumber,
-    this.location,
-    this.status,
-    this.notes,
-    this.images = const [],
+    required this.id, required this.assetTag, required this.category,
+    required this.brand, required this.model, required this.serialNumber,
+    this.location, this.status, this.notes, this.images = const [],
+    this.quantity = 1, this.unit = 'Unidad',
   });
 
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
@@ -46,12 +37,11 @@ class ItAsset {
         location: j['location'] as String?,
         status: j['status'] as String?,
         notes: j['notes'] as String?,
-        images: ((j['images'] as List<dynamic>?) ?? [])
-            .map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        quantity: j['quantity'] as int? ?? 1,
+        unit: j['unit'] as String? ?? 'Unidad',
+        images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
-  /// Primera imagen (para thumbnail).
   String? get imageUrl => images.isNotEmpty ? images.first.url : null;
 }
 
@@ -64,26 +54,21 @@ class ItAssetCreate {
   final String? location;
   final String? status;
   final String? notes;
+  final int quantity;
+  final String unit;
 
   ItAssetCreate({
-    required this.assetTag,
-    required this.category,
-    required this.brand,
-    required this.model,
-    required this.serialNumber,
-    this.location,
-    this.status,
-    this.notes,
+    required this.assetTag, required this.category, required this.brand,
+    required this.model, required this.serialNumber, this.location,
+    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad',
   });
 
   Map<String, dynamic> toJson() => {
-        'asset_tag': assetTag,
-        'category': category,
-        'brand': brand,
-        'model': model,
-        'serial_number': serialNumber,
+        'asset_tag': assetTag, 'category': category, 'brand': brand,
+        'model': model, 'serial_number': serialNumber,
         if (location != null && location!.isNotEmpty) 'location': location,
         if (status != null && status!.isNotEmpty) 'status': status,
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
+        'quantity': quantity, 'unit': unit,
       };
 }

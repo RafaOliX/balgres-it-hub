@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
 
@@ -15,7 +16,6 @@ class InventarioApi {
           receiveTimeout: const Duration(seconds: 30),
           headers: {
             'Content-Type': 'application/json',
-            // Autenticación Basic para pasar el proxy de Caddy
             'Authorization': 'Basic ${base64Encode(utf8.encode('admin:Balgres2026!'))}',
           },
         ));
@@ -26,10 +26,7 @@ class InventarioApi {
   }
 
   Future<List<ItAsset>> buscar(String q) async {
-    final r = await _dio.get<List<dynamic>>(
-      '/inventario/buscar',
-      queryParameters: {'q': q},
-    );
+    final r = await _dio.get<List<dynamic>>('/inventario/buscar', queryParameters: {'q': q});
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -41,6 +38,7 @@ class InventarioApi {
   Future<ItAsset> actualizar(String currentTag, {
     String? assetTag, String? category, String? brand, String? model,
     String? serialNumber, String? location, String? status, String? notes,
+    int? quantity, String? unit,
   }) async {
     final body = <String, dynamic>{
       if (assetTag != null) 'asset_tag': assetTag,
@@ -51,6 +49,8 @@ class InventarioApi {
       if (location != null) 'location': location,
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
+      if (quantity != null) 'quantity': quantity,
+      if (unit != null) 'unit': unit,
     };
     final r = await _dio.patch<Map<String, dynamic>>('/inventario/$currentTag', data: body);
     return ItAsset.fromJson(r.data!);
@@ -76,4 +76,11 @@ class InventarioApi {
   }
 
   Future<void> eliminarImagen(String tag, int imageId) async => await _dio.delete<void>('/inventario/$tag/images/$imageId');
+
+  Future<void> importarExcel(PlatformFile file) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(file.bytes!, filename: file.name),
+    });
+    await _dio.post('/inventario/import', data: form, options: Options(contentType: 'multipart/form-data'));
+  }
 }
