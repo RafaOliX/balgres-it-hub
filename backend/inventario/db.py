@@ -54,3 +54,10 @@ def apply_migrations() -> None:
 	# db.py dentro de apply_migrations()
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS unit VARCHAR(32) DEFAULT 'Unidad';"))
+                conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128);"))
+        # Para que el S/N no sea obligatorio, Postgres ya lo permite si es NULL. 
+        # Si antes era UNIQUE, quitamos el constraint para permitir varios NULLs.
+        try:
+            conn.execute(text("ALTER TABLE it_assets DROP CONSTRAINT IF EXISTS it_assets_serial_number_key;"))
+        except Exception:
+            pass

@@ -46,6 +46,30 @@ def _log_change(session: Session, asset_id: int, field: str, old: str | None, ne
     )
     session.add(h)
 
+@router.get("/siguiente-tag")
+def get_siguiente_tag(category: str, session: Session = Depends(get_session)):
+    # Mapeo básico de prefijos por categoría
+    prefixes = {
+        "Monitor": "MON", "Computadora": "PC", "Impresora": "PRN",
+        "Cable UTP": "UTP", "Cable VGA": "VGA", "Cable de Poder": "PWR",
+        "Switch": "SW", "Router": "RTR"
+    }
+    prefijo = prefixes.get(category, "ACT")
+    
+    # Buscar el último tag con ese prefijo
+    stmt = select(ItAsset.asset_tag).where(ItAsset.asset_tag.like(f"{prefijo}-%")).order_by(ItAsset.asset_tag.desc())
+    ultimo_tag = session.exec(stmt).first()
+    
+    if ultimo_tag:
+        # Extraer el número (ej: MON-005 -> 5)
+        try:
+            ultimo_num = int(ultimo_tag.split('-')[1])
+            return {"tag": f"{prefijo}-{ultimo_num + 1:03d}"}
+        except (IndexError, ValueError):
+            pass
+            
+    return {"tag": f"{prefijo}-001"}
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"module": "inventario", "status": "ok"}
@@ -120,6 +144,7 @@ def generar_pdf(asset_tag: str, session: Session = Depends(get_session)):
     pdf.cell(200, 10, txt=f"Serial: {asset.serial_number}", ln=True)
     pdf.cell(200, 10, txt=f"Cantidad: {asset.quantity} {asset.unit}", ln=True)
     pdf.cell(200, 10, txt=f"Estado: {asset.status}", ln=True)
+    pdf.cell(200, 10, txt=f"Asignado a: {asset.assigned_to or 'No asignado'}", ln=True)
     
     pdf.ln(30)
     pdf.cell(90, 10, txt="_________________________", ln=False)

@@ -22,7 +22,8 @@ class ItAssetCreate(BaseModel):
     category: str = Field(min_length=1, max_length=64)
     brand: str = Field(max_length=64)
     model: str = Field(max_length=128)
-    serial_number: str = Field(min_length=1, max_length=128)
+    serial_number: Optional[str] = None
+    assigned_to: Optional[str] = None
     location: Optional[str] = None
     status: Optional[str] = "Operativo"
     notes: Optional[str] = None
@@ -34,7 +35,8 @@ class ItAssetUpdate(BaseModel):
     category: Optional[str] = Field(default=None, min_length=1, max_length=64)
     brand: Optional[str] = Field(default=None, max_length=64)
     model: Optional[str] = Field(default=None, max_length=128)
-    serial_number: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    serial_number: Optional[str] = None
+    assigned_to: Optional[str] = None
     location: Optional[str] = Field(default=None, max_length=128)
     status: Optional[str] = Field(default=None, max_length=32)
     notes: Optional[str] = None
@@ -48,7 +50,8 @@ class ItAssetRead(BaseModel):
     category: str
     brand: str
     model: str
-    serial_number: str
+    serial_number: Optional[str] = None
+    assigned_to: Optional[str] = None
     location: Optional[str]
     status: Optional[str]
     notes: Optional[str]

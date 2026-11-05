@@ -28,12 +28,13 @@ class ItAsset(SQLModel, table=True):
     category: str = Field(index=True, max_length=64)
     brand: str = Field(max_length=64)
     model: str = Field(max_length=128)
-    serial_number: str = Field(unique=True, index=True, max_length=128)
+    serial_number: Optional[str] = Field(default=None, index=True, max_length=128)
     location: Optional[str] = Field(default=None, max_length=128)
     status: Optional[str] = Field(default="Operativo", max_length=32)
     notes: Optional[str] = Field(default=None)
     quantity: int = Field(default=1)
     unit: Optional[str] = Field(default="Unidad", max_length=32)
+    assigned_to: Optional[str] = Field(default=None, max_length=128)
 
     images: List[ItAssetImage] = Relationship(
         back_populates="asset",

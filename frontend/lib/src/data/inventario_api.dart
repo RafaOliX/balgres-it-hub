@@ -20,6 +20,12 @@ class InventarioApi {
           },
         ));
 
+    Future<String> getSiguienteTag(String category) async {
+    final r = await _dio.get<Map<String, dynamic>>('/inventario/siguiente-tag', queryParameters: {'category': category});
+    return r.data!['tag'] as String;
+  }
+
+
   Future<List<ItAsset>> listar() async {
     final r = await _dio.get<List<dynamic>>('/inventario/');
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
