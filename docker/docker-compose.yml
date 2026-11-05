@@ -1,0 +1,52 @@
+name: balgres-it-hub
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-inventario}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cambiame}
+      POSTGRES_DB: ${DB_NAME:-inventario_it}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-inventario}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-inventario}:${DB_PASSWORD:-cambiame}@db:5432/${DB_NAME:-inventario_it}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../apps/core-api:/app/apps/core-api
+      - ../modules/inventario/backend:/app/modules/inventario/backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../apps/shell/build/web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

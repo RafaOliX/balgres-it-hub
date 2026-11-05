@@ -1,0 +1,19 @@
+# Desarrollo local: HTTP en :80
+:80 {
+    # 1. Health de Caddy (PRIMERO — si no, el catch-all lo atrapa)
+    handle /healthz {
+        respond "ok" 200
+    }
+
+    # 2. API
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # 3. Flutter Web (catch-all, debe ir al final)
+    handle {
+        root * /srv/web
+        try_files {path} /index.html
+        file_server
+    }
+}
