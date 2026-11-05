@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../models/it_asset.dart';
@@ -8,8 +10,8 @@ class InventarioApi {
   InventarioApi({required String baseUrl})
       : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 20),
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 30),
           headers: {'Content-Type': 'application/json'},
         ));
 
@@ -58,5 +60,26 @@ class InventarioApi {
 
   Future<void> eliminar(String tag) async {
     await _dio.delete<void>('/inventario/$tag');
+  }
+
+  Future<ItAsset> subirImagen(String tag, Uint8List bytes, String filename,
+      String mimeType) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: DioMediaType.parse(mimeType),
+      ),
+    });
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/inventario/$tag/image',
+      data: form,
+      options: Options(contentType: 'multipart/form-data'),
+    );
+    return ItAsset.fromJson(r.data!);
+  }
+
+  Future<void> eliminarImagen(String tag) async {
+    await _dio.delete<void>('/inventario/$tag/image');
   }
 }
