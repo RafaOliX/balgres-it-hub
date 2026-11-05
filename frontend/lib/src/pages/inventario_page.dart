@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../data/providers.dart';
 import '../models/it_asset.dart';
 import '../widgets/asset_card.dart';
+import '../widgets/asset_thumbnail.dart';
 
 const _primary = Color(0xFF4F46E5);
 const _bg = Color(0xFFFAFAFA);
@@ -210,9 +211,7 @@ class _StatusFilters extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: active
-                            ? _primary
-                            : _border,
+                        color: active ? _primary : _border,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -244,17 +243,19 @@ class _AssetsTable extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _border),
         ),
         child: DataTable(
+          showCheckboxColumn: false,
           headingRowColor: WidgetStateProperty.all(_bg),
-          dataRowMinHeight: 52,
-          dataRowMaxHeight: 60,
+          dataRowMinHeight: 64,
+          dataRowMaxHeight: 72,
           columns: const [
-            DataColumn(label: Text('Tag')),
+            DataColumn(label: Text('Activo')),
             DataColumn(label: Text('Categoría')),
             DataColumn(label: Text('Marca / Modelo')),
             DataColumn(label: Text('S/N')),
@@ -263,31 +264,47 @@ class _AssetsTable extends StatelessWidget {
           ],
           rows: assets.map((a) {
             final c = _statusColor(a.status);
-            return DataRow(cells: [
-              DataCell(Text(a.assetTag,
-                  style: const TextStyle(fontWeight: FontWeight.w600))),
-              DataCell(Text(a.category)),
-              DataCell(Text('${a.brand} ${a.model}')),
-              DataCell(Text(a.serialNumber,
-                  style: const TextStyle(
-                      fontFamily: 'monospace', fontSize: 12))),
-              DataCell(Text(a.location ?? '—')),
-              DataCell(Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: c.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
+            return DataRow(
+              onSelectChanged: (_) {
+                context.push('/inventario/detalle/${a.assetTag}');
+              },
+              cells: [
+                DataCell(
+                  Row(
+                    children: [
+                      AssetThumbnail(asset: a, size: 32),
+                      const SizedBox(width: 8),
+                      Text(a.assetTag,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13)),
+                    ],
+                  ),
                 ),
-                child: Text(
-                  a.status ?? '—',
-                  style: TextStyle(
-                      color: c,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600),
-                ),
-              )),
-            ]);
+                DataCell(Text(a.category, style: const TextStyle(fontSize: 13))),
+                DataCell(Text('${a.brand} ${a.model}',
+                    style: const TextStyle(fontSize: 13))),
+                DataCell(Text(a.serialNumber,
+                    style: const TextStyle(
+                        fontFamily: 'monospace', fontSize: 12))),
+                DataCell(Text(a.location ?? '—',
+                    style: const TextStyle(fontSize: 13))),
+                DataCell(Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: c.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    a.status ?? '—',
+                    style: TextStyle(
+                        color: c,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600),
+                  ),
+                )),
+              ],
+            );
           }).toList(),
         ),
       ),
