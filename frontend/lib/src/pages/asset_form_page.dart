@@ -14,6 +14,7 @@ class AssetFormPage extends ConsumerStatefulWidget {
 class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _form = GlobalKey<FormState>();
   final _tag = TextEditingController();
+  final _category = TextEditingController(text: 'Monitor');
   final _brand = TextEditingController();
   final _model = TextEditingController();
   final _serial = TextEditingController();
@@ -22,7 +23,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _notes = TextEditingController();
   final _quantity = TextEditingController(text: '1');
   
-  String _category = 'Monitor';
   String _unit = 'Unidad';
   String _status = 'Operativo';
   final List<XFile> _files = [];
@@ -30,26 +30,26 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   bool _cargandoTag = false;
   String? _error;
 
-  // Al cambiar categoría, pedimos el nuevo tag
-  Future<void> _onCategoryChanged(String? newCategory) async {
-    if (newCategory == null) return;
-    setState(() { _category = newCategory; _cargandoTag = true; });
-    try {
-      final api = ref.read(inventarioApiProvider);
-      final nextTag = await api.getSiguienteTag(newCategory);
-      setState(() { _tag.text = nextTag; });
-    } catch (e) {
-      setState(() { _tag.text = ''; });
-    } finally {
-      setState(() { _cargandoTag = false; });
-    }
-  }
-
   @override
   void initState() {
     super.initState();
-    // Cargar el primer tag al abrir la pantalla
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onCategoryChanged(_category));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _generarTag(_category.text));
+  }
+
+  // Al cambiar o escribir la categoría, generamos el Tag
+  Future<void> _generarTag(String category) async {
+    if (category.trim().isEmpty) return;
+    setState(() { _cargandoTag = true; });
+    try {
+      final api = ref.read(inventarioApiProvider);
+      final nextTag = await api.getSiguienteTag(category);
+      setState(() { _tag.text = nextTag; });
+    } catch (e) {
+      // Si falla, ponemos un tag genérico
+      setState(() { _tag.text = 'ACT-001'; });
+    } finally {
+      setState(() { _cargandoTag = false; });
+    }
   }
 
   Future<void> _pickImages(ImageSource source) async {
@@ -67,10 +67,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     try {
       final api = ref.read(inventarioApiProvider);
       final asset = await api.crear(ItAssetCreate(
-        assetTag: _tag.text.trim(), category: _category, brand: _brand.text.trim(),
+        assetTag: _tag.text.trim(), category: _category.text.trim(), brand: _brand.text.trim(),
         model: _model.text.trim(), serialNumber: _serial.text.trim(), location: _location.text.trim(),
         status: _status, notes: _notes.text.trim(), quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit,
-        assignedTo: _assignedTo.text.trim(), // Pásalo si lo añadiste al modelo
+        assignedTo: _assignedTo.text.trim(),
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
       ref.invalidate(inventarioListProvider);
@@ -81,6 +81,12 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  // Lista de sugerencias para el autocompletado
+  static const List<String> _categoriasSugeridas = [
+    'Monitor', 'Computadora', 'Impresora', 'Laptop', 'Switch', 'Router',
+    'Cable UTP', 'Cable VGA', 'Cable de Poder', 'Cable HDMI', 'Disco Duro', 'Memoria RAM'
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -103,23 +109,57 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             ),
             const SizedBox(height: 16),
             
-            // CATEGORÍA (Primero, para que genere el tag)
-            DropdownButtonFormField<String>(
-              value: _category,
-              decoration: const InputDecoration(labelText: 'Categoría *'),
-              items: ['Monitor', 'Computadora', 'Impresora', 'Cable UTP', 'Cable VGA', 'Cable de Poder', 'Switch', 'Router', 'Otro']
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: _onCategoryChanged,
+            // AUTOCOMPLETE PARA CATEGORÍA
+            Autocomplete<String>(
+              initialValue: TextEditingValue(text: _category.text),
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text == '') return const Iterable<String>.empty();
+                return _categoriasSugeridas.where((String option) {
+                  return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                });
+              },
+              onSelected: (String selection) {
+                _category.text = selection;
+                _generarTag(selection);
+              },
+              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                // Sincronizamos el controlador interno con el nuestro
+                textEditingController.addListener(() {
+                  if (_category.text != textEditingController.text) {
+                    _category.text = textEditingController.text;
+                  }
+                });
+                return TextFormField(
+                  controller: textEditingController,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoría *', 
+                    hintText: 'Ej: Monitor, Cable UTP, etc.',
+                    suffixIcon: Icon(Icons.arrow_drop_down)
+                  ),
+                  validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                  onFieldSubmitted: (v) {
+                    _category.text = v;
+                    _generarTag(v);
+                  },
+                );
+              },
             ),
             const SizedBox(height: 10),
             
-            // TAG AUTOGENERADO
+            // TAG GENERADO (EDITABLE)
             TextFormField(
               controller: _tag,
-              readOnly: true, // Bloqueado porque es automático
               decoration: InputDecoration(
-                labelText: 'Asset Tag (Automático)',
-                suffixIcon: _cargandoTag ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.lock, size: 18),
+                labelText: 'Asset Tag (Sugerido)',
+                helperText: 'Puedes cambiarlo si lo deseas',
+                suffixIcon: _cargandoTag 
+                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) 
+                  : IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      onPressed: () => _generarTag(_category.text),
+                      tooltip: 'Regenerar Tag',
+                    ),
               ),
             ),
             const SizedBox(height: 10),
@@ -132,7 +172,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             ]),
             TextFormField(
               controller: _serial, 
-              decoration: const InputDecoration(labelText: 'S/N (Opcional para cables)'),
+              decoration: const InputDecoration(labelText: 'S/N (Opcional)'),
             ),
             
             // CANTIDAD Y UNIDAD

@@ -19,12 +19,13 @@ class ItAsset {
   final List<ItAssetImage> images;
   final int quantity;
   final String unit;
+  final String? assignedTo;
 
   const ItAsset({
     required this.id, required this.assetTag, required this.category,
     required this.brand, required this.model, required this.serialNumber,
     this.location, this.status, this.notes, this.images = const [],
-    this.quantity = 1, this.unit = 'Unidad',
+    this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
   });
 
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
@@ -33,12 +34,13 @@ class ItAsset {
         category: j['category'] as String,
         brand: j['brand'] as String,
         model: j['model'] as String,
-        serialNumber: j['serial_number'] as String,
+        serialNumber: j['serial_number'] ?? '',
         location: j['location'] as String?,
         status: j['status'] as String?,
         notes: j['notes'] as String?,
         quantity: j['quantity'] as int? ?? 1,
         unit: j['unit'] as String? ?? 'Unidad',
+        assignedTo: j['assigned_to'] as String?,
         images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
       );
 
@@ -56,11 +58,12 @@ class ItAssetCreate {
   final String? notes;
   final int quantity;
   final String unit;
+  final String? assignedTo;
 
   ItAssetCreate({
     required this.assetTag, required this.category, required this.brand,
     required this.model, required this.serialNumber, this.location,
-    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad',
+    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
   });
 
   Map<String, dynamic> toJson() => {
@@ -69,6 +72,7 @@ class ItAssetCreate {
         if (location != null && location!.isNotEmpty) 'location': location,
         if (status != null && status!.isNotEmpty) 'status': status,
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
+        if (assignedTo != null && assignedTo!.isNotEmpty) 'assigned_to': assignedTo,
         'quantity': quantity, 'unit': unit,
       };
 }

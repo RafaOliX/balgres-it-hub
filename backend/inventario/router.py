@@ -48,20 +48,15 @@ def _log_change(session: Session, asset_id: int, field: str, old: str | None, ne
 
 @router.get("/siguiente-tag")
 def get_siguiente_tag(category: str, session: Session = Depends(get_session)):
-    # Mapeo básico de prefijos por categoría
-    prefixes = {
-        "Monitor": "MON", "Computadora": "PC", "Impresora": "PRN",
-        "Cable UTP": "UTP", "Cable VGA": "VGA", "Cable de Poder": "PWR",
-        "Switch": "SW", "Router": "RTR"
-    }
-    prefijo = prefixes.get(category, "ACT")
+    # Generar prefijo: Primeras 3 letras de la categoría en mayúsculas
+    cat_clean = "".join(c for c in category.upper() if c.isalnum())
+    prefijo = cat_clean[:3] if cat_clean else "ACT"
     
     # Buscar el último tag con ese prefijo
     stmt = select(ItAsset.asset_tag).where(ItAsset.asset_tag.like(f"{prefijo}-%")).order_by(ItAsset.asset_tag.desc())
     ultimo_tag = session.exec(stmt).first()
     
     if ultimo_tag:
-        # Extraer el número (ej: MON-005 -> 5)
         try:
             ultimo_num = int(ultimo_tag.split('-')[1])
             return {"tag": f"{prefijo}-{ultimo_num + 1:03d}"}
