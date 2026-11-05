@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.prod.example
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.dart_tool
+**/build
+!apps/shell/build
+docs
+deploy
