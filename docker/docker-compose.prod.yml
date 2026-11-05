@@ -1,0 +1,19 @@
+# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+name: balgres-it-hub
+
+services:
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    volumes: []   # sin binds de dev
+    restart: unless-stopped
+
+  db:
+    restart: unless-stopped
+
+  caddy:
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - ../apps/shell/build/web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config

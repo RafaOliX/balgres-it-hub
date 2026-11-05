@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Deps del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copiamos primero sólo los pyproject para cachear pip
+COPY apps/core-api /app/apps/core-api
+COPY modules/inventario/backend /app/modules/inventario/backend
+
+# Instalar el core-api y el módulo inventario (path editable)
+RUN pip install --no-cache-dir -e /app/apps/core-api \
+ && pip install --no-cache-dir -e /app/modules/inventario/backend
+
+# Copiamos el resto (si en dev montamos volumen, esto no afecta)
+COPY apps/core-api /app/apps/core-api
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
