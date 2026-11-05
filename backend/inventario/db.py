@@ -15,7 +15,7 @@ def get_session() -> Iterator[Session]:
 
 
 def apply_migrations() -> None:
-    """Migraciones para agregar ondelete cascade a la tabla de imágenes."""
+    """Migraciones para agregar columnas y arreglar constraints."""
     with engine.begin() as conn:
         # 1. Migrar image_path viejo si existe
         result = conn.execute(text("""
@@ -31,14 +31,14 @@ def apply_migrations() -> None:
                   AND NOT EXISTS (SELECT 1 FROM it_asset_images i WHERE i.filename = a.image_path)
             """))
 
-        # 2. Arreglar FK de imágenes si no tiene ondelete cascade (para que eliminar activo borre fotos)
+        # 2. Arreglar FK de imágenes
         try:
             conn.execute(text("ALTER TABLE it_asset_images DROP CONSTRAINT it_asset_images_asset_id_fkey;"))
             conn.execute(text("ALTER TABLE it_asset_images ADD CONSTRAINT it_asset_images_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES it_assets(id) ON DELETE CASCADE;"))
         except Exception:
-            pass # Ya existe con cascade o la tabla es nueva
+            pass
 
-        # 3. Crear tabla de historial si no existe (create_all no la crea si ya existen las otras)
+        # 3. Crear tabla de historial
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS it_asset_history (
                 id SERIAL PRIMARY KEY,
@@ -51,12 +51,13 @@ def apply_migrations() -> None:
             );
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_it_asset_history_asset_id ON it_asset_history(asset_id);"))
-	# db.py dentro de apply_migrations()
+
+        # 4. Nuevas columnas (quantity, unit, assigned_to)
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS unit VARCHAR(32) DEFAULT 'Unidad';"))
-                conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128);"))
-        # Para que el S/N no sea obligatorio, Postgres ya lo permite si es NULL. 
-        # Si antes era UNIQUE, quitamos el constraint para permitir varios NULLs.
+        conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128);"))
+        
+        # 5. Quitar restricción unique al serial_number si existía
         try:
             conn.execute(text("ALTER TABLE it_assets DROP CONSTRAINT IF EXISTS it_assets_serial_number_key;"))
         except Exception:
