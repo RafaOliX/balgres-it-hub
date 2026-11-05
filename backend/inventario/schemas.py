@@ -1,7 +1,13 @@
 """Schemas Pydantic del módulo inventario."""
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ItAssetImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    filename: str
 
 
 class ItAssetCreate(BaseModel):
@@ -33,4 +39,4 @@ class ItAssetRead(BaseModel):
     location: Optional[str]
     status: Optional[str]
     notes: Optional[str]
-    image_path: Optional[str]
+    images: List[ItAssetImageRead] = []

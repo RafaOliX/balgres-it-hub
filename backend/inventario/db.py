@@ -21,12 +21,25 @@ def get_session() -> Iterator[Session]:
 def apply_migrations() -> None:
     """Migraciones incrementales simples (SQLModel no altera columnas).
 
-    Cada bloque es idempotente: si la columna ya existe, no hace nada.
-    Para producción futura, migrar a Alembic.
+    Idempotente. Migra `image_path` (columna vieja) a la tabla nueva
+    `it_asset_images`.
     """
     with engine.begin() as conn:
-        # Añadir image_path si no existe (Postgres)
+        # ¿existe la columna vieja image_path?
+        result = conn.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'it_assets' AND column_name = 'image_path'
+        """))
+        if result.first() is None:
+            return
+
+        # Copiar valores no nulos que aún no estén en la tabla nueva
         conn.execute(text("""
-            ALTER TABLE it_assets
-            ADD COLUMN IF NOT EXISTS image_path VARCHAR(256);
+            INSERT INTO it_asset_images (asset_id, filename, created_at)
+            SELECT a.id, a.image_path, NOW()
+            FROM it_assets a
+            WHERE a.image_path IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM it_asset_images i WHERE i.filename = a.image_path
+              )
         """))
