@@ -3,16 +3,17 @@ import 'package:go_router/go_router.dart';
 
 class AppLayout extends StatelessWidget {
   final Widget child;
-
   const AppLayout({super.key, required this.child});
 
   static const _destinations = [
     _Dest(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard', path: '/'),
     _Dest(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Inventario', path: '/inventario'),
+    _Dest(icon: Icons.category_outlined, selectedIcon: Icons.category, label: 'Categorías', path: '/categorias'),
   ];
 
   int _indexFor(String location) {
     if (location.startsWith('/inventario')) return 1;
+    if (location.startsWith('/categorias')) return 2;
     return 0;
   }
 
@@ -24,26 +25,32 @@ class AppLayout extends StatelessWidget {
 
     if (wide) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF3F4F6), // Fondo gris suave para contraste
         body: Row(
           children: [
             NavigationRail(
               selectedIndex: index,
               onDestinationSelected: (i) => context.go(_destinations[i].path),
               labelType: NavigationRailLabelType.all,
+              backgroundColor: Colors.white,
               leading: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
                 child: _Brand(),
               ),
-              destinations: _destinations
-                  .map((d) => NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: Text(d.label),
-                      ))
-                  .toList(),
+              destinations: _destinations.map((d) => NavigationRailDestination(
+                icon: Icon(d.icon), selectedIcon: Icon(d.selectedIcon), label: Text(d.label),
+              )).toList(),
             ),
             const VerticalDivider(width: 1),
-            Expanded(child: child),
+            // AQUÍ ESTÁ LA MAGIA: Centrar el contenido a máximo 1400px
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1400),
+                  child: child,
+                ),
+              ),
+            ),
           ],
         ),
       );
@@ -54,13 +61,9 @@ class AppLayout extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) => context.go(_destinations[i].path),
-        destinations: _destinations
-            .map((d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon),
-                  label: d.label,
-                ))
-            .toList(),
+        destinations: _destinations.map((d) => NavigationDestination(
+          icon: Icon(d.icon), selectedIcon: Icon(d.selectedIcon), label: d.label,
+        )).toList(),
       ),
     );
   }
@@ -68,37 +71,23 @@ class AppLayout extends StatelessWidget {
 
 class _Brand extends StatelessWidget {
   const _Brand();
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(10),
-          ),
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(10)),
           child: const Icon(Icons.business, color: Colors.white, size: 22),
         ),
         const SizedBox(height: 6),
-        const Text('Balgres IT',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        const Text('Balgres IT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
       ],
     );
   }
 }
 
 class _Dest {
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final String path;
-  const _Dest({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.path,
-  });
+  final IconData icon; final IconData selectedIcon; final String label; final String path;
+  const _Dest({required this.icon, required this.selectedIcon, required this.label, required this.path});
 }
