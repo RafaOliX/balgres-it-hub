@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,7 +31,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final List<XFile> _files = [];
   bool _saving = false;
   bool _cargandoTag = false;
-  String? _error;
   
   Timer? _autosaveTimer;
   bool _hasChanges = false;
@@ -39,28 +39,28 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   @override
   void initState() {
     super.initState();
-    _tag.addListener(() => _markChanged());
-    _brand.addListener(() => _markChanged());
-    _model.addListener(() => _markChanged());
-    _serial.addListener(() => _markChanged());
-    _location.addListener(() => _markChanged());
-    _assignedTo.addListener(() => _markChanged());
-    _notes.addListener(() => _markChanged());
-    _quantity.addListener(() => _markChanged());
+    _tag.addListener(_markChanged);
+    _brand.addListener(_markChanged);
+    _model.addListener(_markChanged);
+    _serial.addListener(_markChanged);
+    _location.addListener(_markChanged);
+    _assignedTo.addListener(_markChanged);
+    _notes.addListener(_markChanged);
+    _quantity.addListener(_markChanged);
     
-    _autosaveTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_hasChanges && !_saving && _tag.text.isNotEmpty) {
-        _saveDraft();
+    _autosaveTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_hasChanges && !_saving && _tag.text.isNotEmpty && _selectedCategory != null) {
+        _saveDraftSilently();
       }
     });
   }
 
   void _markChanged() {
-    _hasChanges = true;
+    if (!_hasChanges) setState(() => _hasChanges = true);
   }
 
-  Future<void> _saveDraft() async {
-    if (_selectedCategory == null) return;
+  // AUTOGUARDADO SILENCIOSO (No muestra errores en pantalla si falla)
+  Future<void> _saveDraftSilently() async {
     _hasChanges = false;
     try {
       await ref.read(inventarioApiProvider).crear(ItAssetCreate(
@@ -70,9 +70,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
         isDraft: true,
       ));
-      setState(() => _autoSaved = true);
+      if (mounted) setState(() => _autoSaved = true);
     } catch (e) {
-      // Si falla el autoguardado (ej. tag duplicado), lo ignoramos silenciosamente
+      // Si falla (ej. el tag ya existe), no hacemos nada. 
+      // El usuario decidirá guardar manualmente y ahí se le avisará.
     }
   }
 
@@ -82,8 +83,22 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     try {
       final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(cat.id);
       setState(() => _tag.text = nextTag);
+      _hasChanges = true;
     } catch (e) {
       setState(() => _tag.text = '');
+    } finally {
+      setState(() => _cargandoTag = false);
+    }
+  }
+
+  Future<void> _generarNuevoTag() async {
+    if (_selectedCategory == null) return;
+    setState(() => _cargandoTag = true);
+    try {
+      final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(_selectedCategory!.id);
+      setState(() => _tag.text = nextTag);
+    } catch (e) {
+      // ignore
     } finally {
       setState(() => _cargandoTag = false);
     }
@@ -101,21 +116,19 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         builder: (context, setModalState) => AlertDialog(
           title: const Text('Nueva Categoría'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo', border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
-                  items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (v) => setModalState(() => unit = v!),
-                ),
-                CheckboxListTile(title: const Text('¿Requiere S/N?'), value: reqSn, onChanged: (v) => setModalState(() => reqSn = v!)),
-              ],
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
+                items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (v) => setModalState(() => unit = v!),
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(title: const Text('¿Requiere S/N?'), value: reqSn, onChanged: (v) => setModalState(() => reqSn = v!)),
+            ]),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
@@ -152,11 +165,17 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
+  String _parseDioError(dynamic e) {
+    if (e is DioException && e.response?.data is Map && e.response!.data['detail'] != null) {
+      return e.response!.data['detail'].toString();
+    }
+    return 'Error de conexión o del servidor. Revisa tu red o contacta al administrador.';
+  }
+
   Future<void> _submit() async {
     if (!_form.currentState!.validate() || _selectedCategory == null) return;
-    setState(() { _saving = true; _error = null; });
+    setState(() { _saving = true; });
     try {
-      // Al guardar final, enviamos isDraft: false
       final api = ref.read(inventarioApiProvider);
       final asset = await api.crear(ItAssetCreate(
         assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
@@ -167,27 +186,45 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
       
-      ref.read(assetDraftProvider.notifier).state = AssetDraft();
       ref.invalidate(inventarioListProvider);
       if (mounted) context.pop();
     } catch (e) {
-      String errorMsg = '$e';
-      if (errorMsg.contains('409')) {
-        _showErrorDialog('El Asset Tag ya existe. Intenta con otro código.', errorMsg);
+      final friendlyMsg = _parseDioError(e);
+      
+      if (e is DioException && e.response?.statusCode == 409) {
+        // Conflicto de Tag: Ofrecer solución
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 40),
+            title: const Text('Tag duplicado'),
+            content: Text(friendlyMsg),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _generarNuevoTag();
+                },
+                child: const Text('Generar nuevo Tag'),
+              ),
+            ],
+          )
+        );
       } else {
-        _showErrorDialog('Ocurrió un error al guardar.', errorMsg);
+        _showTechnicalErrorDialog('Error al guardar', friendlyMsg, e.toString());
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _showErrorDialog(String friendlyMsg, String technicalMsg) {
+  void _showTechnicalErrorDialog(String title, String friendlyMsg, String technicalMsg) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
-        title: const Text('Error al guardar'),
+        title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,7 +233,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             const SizedBox(height: 16),
             ExpansionTile(
               title: const Text('Detalle técnico (Admin)', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              children: [Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))],
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
+                  child: Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.red)),
+                )
+              ],
             )
           ],
         ),
@@ -213,8 +256,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
   Widget _section(String title, List<Widget> children) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 24),
-      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 24), elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -302,12 +344,20 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _tag, readOnly: true,
-                    decoration: InputDecoration(
-                      labelText: 'Asset Tag (Automático)', border: const OutlineInputBorder(), filled: true, fillColor: Colors.grey[50],
-                      suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _tag, readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: 'Asset Tag (Automático)', border: const OutlineInputBorder(), filled: true, fillColor: Colors.grey[50],
+                            suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(onPressed: _generarNuevoTag, icon: const Icon(Icons.refresh), tooltip: 'Regenerar Tag'),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'N/S (Opcional)', border: OutlineInputBorder())),
