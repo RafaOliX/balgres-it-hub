@@ -31,6 +31,11 @@ class InventarioApi {
     return Category.fromJson(r.data!);
   }
 
+  Future<Category> actualizarCategoria(int id, Category cat) async {
+    final r = await _dio.put<Map<String, dynamic>>('/inventario/categories/$id', data: cat.toJson());
+    return Category.fromJson(r.data!);
+  }
+
   Future<void> eliminarCategoria(int id) async => await _dio.delete('/inventario/categories/$id');
 
   // ACTIVOS

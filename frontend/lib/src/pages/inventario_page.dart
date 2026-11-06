@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,8 +25,13 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
 
   Future<void> _exportarExcel() async {
     final host = ref.read(appHostBaseProvider);
-    final url = Uri.parse('$host/api/inventario/export');
-    if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
+    // Si estamos en Web, usamos ruta relativa. Si estamos en Android, usamos la IP base.
+    final url = Uri.parse(kIsWeb ? '/api/inventario/export' : '$host/api/inventario/export');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir el archivo')));
+    }
   }
 
   Future<void> _importarExcel() async {
@@ -56,7 +62,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
               child: IconButton(
                 icon: const Icon(Icons.close, color: Colors.white),
                 style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                onPressed: () => Navigator.of(ctx).pop(), // Cierra el dialog, no la pantalla
+                onPressed: () => Navigator.of(ctx).pop(),
               ),
             ),
           ],

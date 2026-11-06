@@ -51,6 +51,17 @@ def crear_categoria(payload: CategoryCreate, session: Session = Depends(get_sess
     session.refresh(cat)
     return cat
 
+@router.put("/categories/{cat_id}", response_model=CategoryRead)
+def actualizar_categoria(cat_id: int, payload: CategoryCreate, session: Session = Depends(get_session)):
+    cat = session.get(Category, cat_id)
+    if not cat:
+        raise HTTPException(404, detail="Categoría no encontrada")
+    for k, v in payload.model_dump().items():
+        setattr(cat, k, v)
+    session.add(cat)
+    session.commit()
+    session.refresh(cat)
+    return cat
 @router.delete("/categories/{cat_id}", status_code=204)
 def eliminar_categoria(cat_id: int, session: Session = Depends(get_session)):
     cat = session.get(Category, cat_id)
