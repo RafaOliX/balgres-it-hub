@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,68 +15,73 @@ class AssetFormPage extends ConsumerStatefulWidget {
 
 class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _form = GlobalKey<FormState>();
-  late TextEditingController _tag;
-  late TextEditingController _brand;
-  late TextEditingController _model;
-  late TextEditingController _serial;
-  late TextEditingController _location;
-  late TextEditingController _assignedTo;
-  late TextEditingController _notes;
-  late TextEditingController _quantity;
+  final _tag = TextEditingController();
+  final _brand = TextEditingController();
+  final _model = TextEditingController();
+  final _serial = TextEditingController();
+  final _location = TextEditingController();
+  final _assignedTo = TextEditingController();
+  final _notes = TextEditingController();
+  final _quantity = TextEditingController(text: '1');
   
   Category? _selectedCategory;
-  late String _unit;
-  late String _status;
+  String _unit = 'Unidad';
+  String _status = 'Operativo';
   final List<XFile> _files = [];
   bool _saving = false;
   bool _cargandoTag = false;
   String? _error;
+  
+  Timer? _autosaveTimer;
+  bool _hasChanges = false;
+  bool _autoSaved = false;
 
   @override
   void initState() {
     super.initState();
-    final draft = ref.read(assetDraftProvider);
-    _tag = TextEditingController(text: draft.tag);
-    _brand = TextEditingController(text: draft.brand);
-    _model = TextEditingController(text: draft.model);
-    _serial = TextEditingController(text: draft.serial);
-    _location = TextEditingController(text: draft.location);
-    _assignedTo = TextEditingController(text: draft.assignedTo);
-    _notes = TextEditingController(text: draft.notes);
-    _quantity = TextEditingController(text: draft.quantity);
-    _unit = draft.unit;
-    _status = draft.status;
-
-    // Si hay datos en el borrador, avisar al usuario
-    if (draft.brand.isNotEmpty || draft.model.isNotEmpty || draft.notes.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Se recuperó un borrador de activo no guardado.'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      });
-    }
+    _tag.addListener(() => _markChanged());
+    _brand.addListener(() => _markChanged());
+    _model.addListener(() => _markChanged());
+    _serial.addListener(() => _markChanged());
+    _location.addListener(() => _markChanged());
+    _assignedTo.addListener(() => _markChanged());
+    _notes.addListener(() => _markChanged());
+    _quantity.addListener(() => _markChanged());
+    
+    _autosaveTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (_hasChanges && !_saving && _tag.text.isNotEmpty) {
+        _saveDraft();
+      }
+    });
   }
 
-  void _guardarBorrador() {
-    ref.read(assetDraftProvider.notifier).state = AssetDraft(
-      tag: _tag.text, brand: _brand.text, model: _model.text, serial: _serial.text,
-      location: _location.text, assignedTo: _assignedTo.text, notes: _notes.text,
-      quantity: _quantity.text, unit: _unit, status: _status,
-      categoryId: _selectedCategory?.id, categoryName: _selectedCategory?.name ?? ''
-    );
+  void _markChanged() {
+    _hasChanges = true;
+  }
+
+  Future<void> _saveDraft() async {
+    if (_selectedCategory == null) return;
+    _hasChanges = false;
+    try {
+      await ref.read(inventarioApiProvider).crear(ItAssetCreate(
+        assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
+        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
+        location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
+        quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
+        isDraft: true,
+      ));
+      setState(() => _autoSaved = true);
+    } catch (e) {
+      // Si falla el autoguardado (ej. tag duplicado), lo ignoramos silenciosamente
+    }
   }
 
   Future<void> _onCategorySelected(Category? cat) async {
     if (cat == null) return;
     setState(() { _selectedCategory = cat; _unit = cat.unit; _cargandoTag = true; });
-    _guardarBorrador();
     try {
       final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(cat.id);
       setState(() => _tag.text = nextTag);
-      _guardarBorrador();
     } catch (e) {
       setState(() => _tag.text = '');
     } finally {
@@ -100,18 +106,14 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               children: [
                 TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
                 const SizedBox(height: 12),
-                TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+                TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo', border: OutlineInputBorder())),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
                   items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                   onChanged: (v) => setModalState(() => unit = v!),
                 ),
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  title: const Text('¿Requiere S/N?'), value: reqSn,
-                  onChanged: (v) => setModalState(() => reqSn = v!),
-                )
+                CheckboxListTile(title: const Text('¿Requiere S/N?'), value: reqSn, onChanged: (v) => setModalState(() => reqSn = v!)),
               ],
             ),
           ),
@@ -154,12 +156,14 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     if (!_form.currentState!.validate() || _selectedCategory == null) return;
     setState(() { _saving = true; _error = null; });
     try {
+      // Al guardar final, enviamos isDraft: false
       final api = ref.read(inventarioApiProvider);
       final asset = await api.crear(ItAssetCreate(
         assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
         brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
         location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
         quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
+        isDraft: false,
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
       
@@ -168,19 +172,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       if (mounted) context.pop();
     } catch (e) {
       String errorMsg = '$e';
-      // Si es un error 409 (duplicado), intentamos obtener un nuevo tag automáticamente
       if (errorMsg.contains('409')) {
-        try {
-          final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(_selectedCategory!.id);
-          setState(() {
-            _tag.text = nextTag;
-            _error = 'El Tag que tenías fue ocupado por otro usuario. Te asignamos el nuevo Tag: $nextTag. Por favor, vuelve a darle a Guardar.';
-          });
-        } catch (_) {
-          setState(() => _error = 'El Asset Tag o el Número de Serie ya existen. Por favor, revisa los datos.');
-        }
+        _showErrorDialog('El Asset Tag ya existe. Intenta con otro código.', errorMsg);
       } else {
-        setState(() => _error = errorMsg);
+        _showErrorDialog('Ocurrió un error al guardar.', errorMsg);
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -200,22 +195,20 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             Text(friendlyMsg, style: const TextStyle(fontSize: 15)),
             const SizedBox(height: 16),
             ExpansionTile(
-              title: const Text('Ver detalle técnico (Para el administrador)', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
-                  child: Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.red)),
-                )
-              ],
+              title: const Text('Detalle técnico (Admin)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              children: [Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))],
             )
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido'))],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    super.dispose();
   }
 
   Widget _section(String title, List<Widget> children) {
@@ -244,15 +237,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        title: const Text('Nuevo activo'), 
-        backgroundColor: Colors.white, elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            _guardarBorrador(); // Guarda al salir
-            context.pop();
-          },
-        ),
+        title: const Text('Nuevo activo'), backgroundColor: Colors.white, elevation: 0.5,
+        actions: [
+          if (_autoSaved) const Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Center(child: Text('Borrador guardado', style: TextStyle(color: Colors.green, fontSize: 12))),
+          )
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -262,7 +253,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-
                 _section('Fotografía', [
                   GestureDetector(
                     onTap: () => showModalBottomSheet(
@@ -282,15 +272,11 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                     SizedBox(
                       height: 100,
                       child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _files.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) => Stack(
-                          children: [
-                            FutureBuilder(future: _files[i].readAsBytes(), builder: (_, snap) => snap.hasData ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(snap.data!, width: 100, height: 100, fit: BoxFit.cover)) : Container(width: 100, height: 100, color: Colors.grey[200])),
-                            Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 16), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () => setState(() => _files.removeAt(i)))),
-                          ],
-                        ),
+                        scrollDirection: Axis.horizontal, itemCount: _files.length, separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) => Stack(children: [
+                          FutureBuilder(future: _files[i].readAsBytes(), builder: (_, snap) => snap.hasData ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(snap.data!, width: 100, height: 100, fit: BoxFit.cover)) : Container(width: 100, height: 100, color: Colors.grey[200])),
+                          Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 16), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () => setState(() => _files.removeAt(i)))),
+                        ]),
                       ),
                     ),
                   ]
@@ -305,11 +291,9 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                           loading: () => const LinearProgressIndicator(),
                           error: (e, _) => Text('Error: $e'),
                           data: (cats) => DropdownButtonFormField<Category>(
-                            value: _selectedCategory,
-                            decoration: const InputDecoration(labelText: 'Categoría *', border: OutlineInputBorder()),
+                            value: _selectedCategory, decoration: const InputDecoration(labelText: 'Categoría *', border: OutlineInputBorder()),
                             items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
-                            onChanged: _onCategorySelected,
-                            validator: (v) => v == null ? 'Requerido' : null,
+                            onChanged: _onCategorySelected, validator: (v) => v == null ? 'Requerido' : null,
                           ),
                         ),
                       ),

@@ -21,11 +21,14 @@ class ItAsset {
   final int quantity;
   final String unit;
   final String? assignedTo;
+  final DateTime createdAt;
+  final bool isDraft;
 
   const ItAsset({
     required this.id, required this.assetTag, required this.category, this.categoryId,
     required this.brand, required this.model, this.serialNumber, this.location, this.status, this.notes,
     this.images = const [], this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
+    required this.createdAt, this.isDraft = false,
   });
 
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
@@ -42,6 +45,8 @@ class ItAsset {
     quantity: j['quantity'] as int? ?? 1,
     unit: j['unit'] as String? ?? 'Unidad',
     assignedTo: j['assigned_to'] as String?,
+    createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
+    isDraft: j['is_draft'] as bool? ?? false,
     images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
   );
 
@@ -61,25 +66,24 @@ class ItAssetCreate {
   final int quantity;
   final String unit;
   final String? assignedTo;
+  final bool isDraft;
 
   ItAssetCreate({
     required this.assetTag, required this.category, this.categoryId,
     required this.brand, required this.model, this.serialNumber, this.location,
-    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
+    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.assignedTo, this.isDraft = false,
   });
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'asset_tag': assetTag, 'category': category, 'category_id': categoryId,
-      'brand': brand, 'model': model, 'quantity': quantity, 'unit': unit,
+      'brand': brand, 'model': model, 'quantity': quantity, 'unit': unit, 'is_draft': isDraft,
     };
-    // Solo enviamos estos campos si tienen contenido real
     if (serialNumber != null && serialNumber!.trim().isNotEmpty) map['serial_number'] = serialNumber;
     if (location != null && location!.trim().isNotEmpty) map['location'] = location;
     if (status != null && status!.isNotEmpty) map['status'] = status;
     if (notes != null && notes!.trim().isNotEmpty) map['notes'] = notes;
     if (assignedTo != null && assignedTo!.trim().isNotEmpty) map['assigned_to'] = assignedTo;
-    
     return map;
   }
 }

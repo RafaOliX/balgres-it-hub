@@ -13,7 +13,6 @@ def get_session() -> Iterator[Session]:
 
 def apply_migrations() -> None:
     with engine.begin() as conn:
-        # Crear tabla categories si no existe (SQLModel no la crea si ya hay tablas)
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
@@ -25,7 +24,6 @@ def apply_migrations() -> None:
             );
         """))
         
-        # Insertar categorías por defecto si la tabla está vacía
         result = conn.execute(text("SELECT COUNT(*) FROM categories"))
         if result.scalar() == 0:
             conn.execute(text("""
@@ -37,19 +35,21 @@ def apply_migrations() -> None:
                 ('Impresora', 'PRN', 'Unidad', TRUE);
             """))
 
-        # Añadir columnas nuevas a it_assets
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id);"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS unit VARCHAR(32) DEFAULT 'Unidad';"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128);"))
         
-        # Quitar constraints viejos
+        # Nuevas columnas para fecha y borrador
+        conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();"))
+        conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS is_draft BOOLEAN DEFAULT FALSE;"))
+        
+        # Quitar restricción de unicidad al S/N si existía
         try:
             conn.execute(text("ALTER TABLE it_assets DROP CONSTRAINT IF EXISTS it_assets_serial_number_key;"))
         except Exception:
             pass
 
-        # Arreglar FK de imágenes
         try:
             conn.execute(text("ALTER TABLE it_asset_images DROP CONSTRAINT it_asset_images_asset_id_fkey;"))
             conn.execute(text("ALTER TABLE it_asset_images ADD CONSTRAINT it_asset_images_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES it_assets(id) ON DELETE CASCADE;"))

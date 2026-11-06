@@ -46,12 +46,12 @@ class ItAssetCreate(BaseModel):
     quantity: Optional[int] = 1
     unit: Optional[str] = "Unidad"
     assigned_to: Optional[str] = None
+    is_draft: Optional[bool] = False
 
     @field_validator('serial_number', 'location', 'notes', 'assigned_to')
     @classmethod
     def empty_to_none(cls, v: str | None) -> str | None:
-        if v is not None and v.strip() == "":
-            return None
+        if v is not None and v.strip() == "": return None
         return v
 
 class ItAssetUpdate(BaseModel):
@@ -67,12 +67,12 @@ class ItAssetUpdate(BaseModel):
     quantity: Optional[int] = None
     unit: Optional[str] = None
     assigned_to: Optional[str] = None
+    is_draft: Optional[bool] = None
 
     @field_validator('serial_number', 'location', 'notes', 'assigned_to')
     @classmethod
     def empty_to_none(cls, v: str | None) -> str | None:
-        if v is not None and v.strip() == "":
-            return None
+        if v is not None and v.strip() == "": return None
         return v
 
 class ItAssetRead(BaseModel):
@@ -91,3 +91,5 @@ class ItAssetRead(BaseModel):
     quantity: Optional[int] = 1
     unit: Optional[str] = "Unidad"
     assigned_to: Optional[str] = None
+    created_at: datetime
+    is_draft: bool

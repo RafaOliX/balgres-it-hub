@@ -47,22 +47,11 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
-            Positioned(
-              top: 0, right: 0,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                onPressed: () => Navigator.of(ctx).pop(),
-              ),
-            ),
-          ],
-        ),
+        backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16),
+        child: Stack(alignment: Alignment.center, children: [
+          InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
+          Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.black54), onPressed: () => Navigator.of(ctx).pop())),
+        ]),
       ),
     );
   }
@@ -76,16 +65,12 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
     return Scaffold(
       backgroundColor: _bg,
       appBar: isMobile ? AppBar(
-        title: const Text('Inventario', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
+        title: const Text('Inventario', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.white,
         actions: [
           IconButton(icon: const Icon(Icons.category_outlined), onPressed: () => context.push('/categorias'), tooltip: 'Categorías'),
           PopupMenuButton<String>(
             onSelected: (val) { if (val == 'export') _exportarExcel(); if (val == 'import') _importarExcel(); },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'export', child: Text('Exportar Excel')),
-              const PopupMenuItem(value: 'import', child: Text('Importar Excel')),
-            ],
+            itemBuilder: (_) => [const PopupMenuItem(value: 'export', child: Text('Exportar Excel')), const PopupMenuItem(value: 'import', child: Text('Importar Excel'))],
           )
         ],
       ) : null,
@@ -101,17 +86,17 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (items) {
-                final filtered = _statusFilter == 'Todos' ? items : items.where((a) => a.status == _statusFilter).toList();
+                final filtered = _statusFilter == 'Todos' ? items : items.where((a) => a.status == _statusFilter || (a.isDraft && _statusFilter == 'Borradores')).toList();
                 return Column(
                   children: [
                     _StatusFilters(
                       current: _statusFilter, onChanged: (s) => setState(() => _statusFilter = s),
                       counts: {
-                        'Todos': items.length,
-                        'Borrador': items.where((a) => a.status == 'Borrador').length,
-                        'Operativo': items.where((a) => a.status == 'Operativo').length,
-                        'En Revisión': items.where((a) => a.status == 'En Revisión').length,
-                        'Retirado': items.where((a) => a.status == 'Retirado').length,
+                        'Todos': items.where((a) => !a.isDraft).length, // No contar borradores en "Todos"
+                        'Borradores': items.where((a) => a.isDraft).length,
+                        'Operativo': items.where((a) => !a.isDraft && a.status == 'Operativo').length,
+                        'En Revisión': items.where((a) => !a.isDraft && a.status == 'En Revisión').length,
+                        'Retirado': items.where((a) => !a.isDraft && a.status == 'Retirado').length,
                       },
                     ),
                     Expanded(
@@ -131,8 +116,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
         ],
       ),
       floatingActionButton: isMobile ? FloatingActionButton(
-        onPressed: () => context.push('/inventario/nuevo'),
-        backgroundColor: _primary,
+        onPressed: () => context.push('/inventario/nuevo'), backgroundColor: _primary,
         child: const Icon(Icons.add, color: Colors.white),
       ) : null,
     );
@@ -245,8 +229,8 @@ class _AssetsTable extends StatelessWidget {
         child: DataTable(
           showCheckboxColumn: false,
           columns: const [
-            DataColumn(label: Text('Activo')), DataColumn(label: Text('Cant.')), DataColumn(label: Text('Categoría')),
-            DataColumn(label: Text('Marca / Modelo')), DataColumn(label: Text('Ubicación')), DataColumn(label: Text('Estado')),
+            DataColumn(label: Text('Activo')), DataColumn(label: Text('Registro')), DataColumn(label: Text('Cant.')), DataColumn(label: Text('Categoría')),
+            DataColumn(label: Text('Marca / Modelo')), DataColumn(label: Text('Estado')),
           ],
           rows: assets.map((a) {
             final c = _statusColor(a.status);
@@ -256,12 +240,13 @@ class _AssetsTable extends StatelessWidget {
                 DataCell(Row(children: [
                   GestureDetector(onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); }, child: AssetThumbnail(asset: a, size: 40)),
                   const SizedBox(width: 8), 
-                  Text(a.assetTag, style: const TextStyle(fontWeight: FontWeight.w600))
+                  Text(a.assetTag, style: TextStyle(fontWeight: FontWeight.w600, color: a.isDraft ? Colors.grey : Colors.black)),
+                  if (a.isDraft) const Padding(padding: EdgeInsets.only(left: 8), child: Chip(label: Text('Borrador', style: TextStyle(fontSize: 10)), backgroundColor: Colors.grey[200], visualDensity: VisualDensity.compact))
                 ])),
+                DataCell(Text(a.createdAt.toString().substring(0, 10))),
                 DataCell(Text('${a.quantity} ${a.unit}')),
                 DataCell(Text(a.category)),
                 DataCell(Text('${a.brand} ${a.model}')),
-                DataCell(Text(a.location ?? '—')),
                 DataCell(Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: c.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
