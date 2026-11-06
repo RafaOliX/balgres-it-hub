@@ -34,7 +34,13 @@ def _log_change(session: Session, asset_id: int, field: str, old: str | None, ne
     if old == new: return
     session.add(ItAssetHistory(asset_id=asset_id, field_name=field, old_value=str(old) if old else None, new_value=str(new) if new else None))
 
-# ──────────────── CATEGORÍAS ────────────────
+# ==============================================================================
+# RUTAS FIJAS (DEBEN IR PRIMERO PARA EVITAR QUE /{asset_tag} LAS ATRAPE)
+# ==============================================================================
+
+@router.get("/health")
+async def health() -> dict[str, str]: return {"module": "inventario", "status": "ok"}
+
 @router.get("/categories", response_model=list[CategoryRead])
 def listar_categorias(session: Session = Depends(get_session)):
     return list(session.exec(select(Category)).all())
@@ -54,34 +60,30 @@ def crear_categoria(payload: CategoryCreate, session: Session = Depends(get_sess
 @router.put("/categories/{cat_id}", response_model=CategoryRead)
 def actualizar_categoria(cat_id: int, payload: CategoryCreate, session: Session = Depends(get_session)):
     cat = session.get(Category, cat_id)
-    if not cat:
-        raise HTTPException(404, detail="Categoría no encontrada")
+    if not cat: raise HTTPException(404, detail="Categoría no encontrada")
     for k, v in payload.model_dump().items():
         setattr(cat, k, v)
     session.add(cat)
     session.commit()
     session.refresh(cat)
     return cat
+
 @router.delete("/categories/{cat_id}", status_code=204)
 def eliminar_categoria(cat_id: int, session: Session = Depends(get_session)):
     cat = session.get(Category, cat_id)
     if not cat: raise HTTPException(404, detail="Categoría no encontrada")
-    # Verificar si hay activos usando esta categoría
     activos = session.exec(select(ItAsset).where(ItAsset.category_id == cat_id)).first()
     if activos: raise HTTPException(400, detail="No se puede eliminar, hay activos usando esta categoría")
     session.delete(cat)
     session.commit()
 
-# ──────────────── TAG DINÁMICO ────────────────
 @router.get("/siguiente-tag")
 def get_siguiente_tag(category_id: int, session: Session = Depends(get_session)):
     cat = session.get(Category, category_id)
     if not cat: raise HTTPException(404, detail="Categoría no encontrada")
     prefijo = cat.prefix.upper()
-    
     stmt = select(ItAsset.asset_tag).where(ItAsset.asset_tag.like(f"{prefijo}-%")).order_by(ItAsset.asset_tag.desc())
     ultimo_tag = session.exec(stmt).first()
-    
     if ultimo_tag:
         try:
             num = int(ultimo_tag.split('-')[1]) + 1
@@ -89,18 +91,24 @@ def get_siguiente_tag(category_id: int, session: Session = Depends(get_session))
         except: pass
     return {"tag": f"{prefijo}-001"}
 
-# ──────────────── ACTIVOS ────────────────
-@router.get("/health")
-async def health() -> dict[str, str]: return {"module": "inventario", "status": "ok"}
-
-@router.get("/", response_model=list[ItAssetRead])
-def listar(session: Session = Depends(get_session)): return list(session.exec(select(ItAsset)).all())
+@router.get("/export")
+def exportar_excel(session: Session = Depends(get_session)):
+    assets = session.exec(select(ItAsset)).all()
+    data = [{"Tag": a.asset_tag, "Categoría": a.category, "Marca": a.brand, "Modelo": a.model, "S/N": a.serial_number, "Cantidad": a.quantity, "Unidad": a.unit, "Ubicación": a.location, "Estado": a.status, "Asignado a": a.assigned_to, "Notas": a.notes} for a in assets]
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Inventario')
+    output.seek(0)
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=inventario.xlsx"})
 
 @router.get("/buscar", response_model=list[ItAssetRead])
 def buscar(q: str, session: Session = Depends(get_session)):
     pattern = f"%{q}%"
     stmt = select(ItAsset).where(ItAsset.asset_tag.ilike(pattern) | ItAsset.category.ilike(pattern) | ItAsset.brand.ilike(pattern) | ItAsset.model.ilike(pattern) | ItAsset.serial_number.ilike(pattern))
     return list(session.exec(stmt).all())
+
+@router.get("/", response_model=list[ItAssetRead])
+def listar(session: Session = Depends(get_session)): return list(session.exec(select(ItAsset)).all())
 
 @router.post("/", response_model=ItAssetRead, status_code=201)
 def crear(payload: ItAssetCreate, session: Session = Depends(get_session)):
@@ -113,6 +121,14 @@ def crear(payload: ItAssetCreate, session: Session = Depends(get_session)):
         raise HTTPException(409, detail="Tag o S/N ya existen")
     session.refresh(asset)
     return asset
+
+# ==============================================================================
+# RUTAS DINÁMICAS (DEBEN IR AL FINAL)
+# ==============================================================================
+
+@router.get("/{asset_tag}", response_model=ItAssetRead)
+def obtener(asset_tag: str, session: Session = Depends(get_session)): 
+    return _get_or_404(session, asset_tag)
 
 @router.patch("/{asset_tag}", response_model=ItAssetRead)
 def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depends(get_session)):
@@ -128,9 +144,6 @@ def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depend
         raise HTTPException(409, detail="El nuevo tag o S/N ya existen")
     session.refresh(asset)
     return asset
-
-@router.get("/{asset_tag}", response_model=ItAssetRead)
-def obtener(asset_tag: str, session: Session = Depends(get_session)): return _get_or_404(session, asset_tag)
 
 @router.get("/{asset_tag}/history", response_model=list[ItAssetHistoryRead])
 def historial(asset_tag: str, session: Session = Depends(get_session)):
@@ -170,16 +183,6 @@ def eliminar_imagen(asset_tag: str, image_id: int, session: Session = Depends(ge
         if p.exists(): p.unlink()
         session.delete(img)
         session.commit()
-
-@router.get("/export")
-def exportar_excel(session: Session = Depends(get_session)):
-    assets = session.exec(select(ItAsset)).all()
-    data = [{"Tag": a.asset_tag, "Categoría": a.category, "Marca": a.brand, "Modelo": a.model, "S/N": a.serial_number, "Cantidad": a.quantity, "Unidad": a.unit, "Ubicación": a.location, "Estado": a.status, "Asignado a": a.assigned_to, "Notas": a.notes} for a in assets]
-    df = pd.DataFrame(data)
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Inventario')
-    output.seek(0)
-    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=inventario.xlsx"})
 
 @router.get("/{asset_tag}/pdf")
 def generar_pdf(asset_tag: str, session: Session = Depends(get_session)):
