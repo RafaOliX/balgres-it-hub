@@ -11,13 +11,17 @@ import 'core/layout.dart';
 import 'core/theme.dart';
 import 'pages/dashboard_page.dart';
 
+// En web usa /api (relativo). En Android se pasa por --dart-define.
 const _apiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: '/api', 
+  defaultValue: '/api',
 );
 
-// CORREGIDO AQUÍ: Sin el \; al final
-final String _hostBase = kIsWeb ? '' : 'http://192.168.0.10:8091';
+// Para Android, pasaremos la URL base completa. En Web, estará vacío.
+const _hostBase = String.fromEnvironment(
+  'HOST_BASE',
+  defaultValue: '',
+);
 
 void main() => runApp(const BalgresItApp());
 
@@ -39,7 +43,6 @@ final _router = GoRouter(
             ),
           ],
         ),
-        // RUTA DE CATEGORÍAS
         GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
       ],
     ),
