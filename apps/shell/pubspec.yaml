@@ -15,6 +15,7 @@ dependencies:
   flutter_riverpod: ^2.5.1
   package_info_plus: ^8.0.2
   url_launcher: ^6.3.0
+  file_saver: ^0.2.14 
 
   balgres_it_inventario:
     path: ../../modules/inventario/frontend
