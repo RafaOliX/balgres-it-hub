@@ -13,8 +13,9 @@ class AssetEditPage extends ConsumerStatefulWidget {
 
 class _AssetEditPageState extends ConsumerState<AssetEditPage> {
   final _form = GlobalKey<FormState>();
-  late TextEditingController _tag, _category, _brand, _model, _serial, _location, _notes;
+  late TextEditingController _tag, _category, _brand, _model, _serial, _location, _notes, _quantity, _assignedTo;
   late String _status;
+  late String _unit;
   bool _saving = false;
 
   @override
@@ -27,20 +28,30 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
     _serial = TextEditingController(text: widget.asset.serialNumber);
     _location = TextEditingController(text: widget.asset.location);
     _notes = TextEditingController(text: widget.asset.notes);
+    _quantity = TextEditingController(text: widget.asset.quantity.toString());
+    _assignedTo = TextEditingController(text: widget.asset.assignedTo);
     _status = widget.asset.status ?? 'Operativo';
+    _unit = widget.asset.unit;
   }
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await ref.read(inventarioApiProvider).actualizar(
-        widget.asset.assetTag,
-        assetTag: _tag.text.trim(), category: _category.text.trim(),
-        brand: _brand.text.trim(), model: _model.text.trim(),
-        serialNumber: _serial.text.trim(), location: _location.text.trim(),
-        status: _status, notes: _notes.text.trim(),
-      );
+      // AHORA PASAMOS UN MAPA (Como pide el nuevo método actualizar)
+      await ref.read(inventarioApiProvider).actualizar(widget.asset.assetTag, {
+        'asset_tag': _tag.text.trim(),
+        'category': _category.text.trim(),
+        'brand': _brand.text.trim(),
+        'model': _model.text.trim(),
+        'serial_number': _serial.text.trim(),
+        'location': _location.text.trim(),
+        'status': _status,
+        'notes': _notes.text.trim(),
+        'quantity': int.tryParse(_quantity.text) ?? 1,
+        'unit': _unit,
+        'assigned_to': _assignedTo.text.trim(),
+      });
       ref.invalidate(inventarioListProvider);
       if (mounted) context.pop();
     } catch (e) {
@@ -60,14 +71,20 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
           padding: const EdgeInsets.all(16),
           children: [
             TextFormField(controller: _tag, decoration: const InputDecoration(labelText: 'Asset Tag *'), validator: (v) => v!.isEmpty ? 'Requerido' : null),
-            TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N *'), validator: (v) => v!.isEmpty ? 'Requerido' : null),
             TextFormField(controller: _category, decoration: const InputDecoration(labelText: 'Categoría *'), validator: (v) => v!.isEmpty ? 'Requerido' : null),
             Row(children: [
               Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
               const SizedBox(width: 10),
               Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
             ]),
-            TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación')),
+            TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N (Opcional)')),
+            Row(children: [
+              Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
+              const SizedBox(width: 10),
+              Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))),
+            ]),
+            TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)')),
+            TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física')),
             DropdownButtonFormField<String>(
               value: _status,
               decoration: const InputDecoration(labelText: 'Estado'),

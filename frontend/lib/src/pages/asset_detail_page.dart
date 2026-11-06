@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../data/providers.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
@@ -42,8 +44,37 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
+  Future<void> _agregarImagenes() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Tomar foto'), onTap: () => Navigator.pop(context, ImageSource.camera)),
+        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Elegir de galería'), onTap: () => Navigator.pop(context, ImageSource.gallery)),
+      ])),
+    );
+    if (source == null) return;
+    final picker = ImagePicker();
+    final picked = source == ImageSource.gallery ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85) : [if (await picker.pickImage(source: ImageSource.camera) != null) (await picker.pickImage(source: ImageSource.camera))!].whereType<XFile>().toList();
+    if (picked.isEmpty) return;
+    try {
+      await ref.read(inventarioApiProvider).subirImagenes(_asset!.assetTag, picked);
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> _eliminarImagen(ItAssetImage img) async {
+    try {
+      await ref.read(inventarioApiProvider).eliminarImagen(_asset!.assetTag, img.id);
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   Future<void> _generarPdf() async {
-    final url = Uri.parse('http://192.0.0.69:8091/api/inventario/${widget.assetTag}/pdf');
+    final url = Uri.parse('http://192.168.0.10:8091/api/inventario/${widget.assetTag}/pdf');
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
@@ -86,7 +117,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
         body: _loading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Text(_error!)) : TabBarView(
           children: [
             ListView(padding: const EdgeInsets.all(16), children: [
-              if (_asset!.imageUrl != null) ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(_asset!.imageUrl!, height: 200, fit: BoxFit.cover)),
+              _galeriaFotos(),
               const SizedBox(height: 16),
               _card('Información', [
                 _kv('Tag', _asset!.assetTag),
@@ -94,9 +125,10 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 _kv('Categoría', _asset!.category),
                 _kv('Marca', _asset!.brand),
                 _kv('Modelo', _asset!.model),
-                _kv('S/N', _asset!.serialNumber),
+                _kv('S/N', _asset!.serialNumber ?? 'N/A'), // ARREGLADO AQUÍ
                 _kv('Ubicación', _asset!.location ?? '—'),
                 _kv('Estado', _asset!.status ?? '—'),
+                _kv('Asignado a', _asset!.assignedTo ?? '—'),
               ]),
               if (_asset!.notes != null && _asset!.notes!.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -118,10 +150,64 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     );
   }
 
+  // NUEVA GALERÍA HORIZONTAL (Carrusel)
+  Widget _galeriaFotos() {
+    final imgs = _asset!.images;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey))),
+              TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 16), label: const Text('Agregar')),
+            ],
+          ),
+          if (imgs.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 12))),
+            )
+          else
+            SizedBox(
+              height: 120,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: imgs.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) => Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(imgs[i].url, width: 160, height: 120, fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: 4, right: 4,
+                      child: Material(
+                        color: Colors.black54,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => _eliminarImagen(imgs[i]),
+                          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 14, color: Colors.white)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _card(String title, List<Widget> children) => Container(
     padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)), const SizedBox(height: 10), ...children]),
   );
 
-  Widget _kv(String k, String v) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [SizedBox(width: 80, child: Text(k, style: const TextStyle(fontSize: 12, color: Colors.grey))), Expanded(child: Text(v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)))]));
+  Widget _kv(String k, String v) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [SizedBox(width: 90, child: Text(k, style: const TextStyle(fontSize: 12, color: Colors.grey))), Expanded(child: Text(v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)))]));
 }
