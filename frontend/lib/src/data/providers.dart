@@ -7,6 +7,11 @@ final inventarioApiProvider = Provider<InventarioApi>((ref) {
   throw UnimplementedError('Debe override desde apps/shell');
 });
 
+// Provider para saber el host base (ej: 'http://192.168.0.10:8091' o '')
+final appHostBaseProvider = Provider<String>((ref) {
+  throw UnimplementedError('Debe override desde apps/shell');
+});
+
 final inventarioQueryProvider = StateProvider<String>((ref) => '');
 
 final inventarioListProvider = FutureProvider.autoDispose<List<ItAsset>>((ref) async {

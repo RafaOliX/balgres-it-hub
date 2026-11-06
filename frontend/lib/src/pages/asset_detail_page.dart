@@ -83,7 +83,8 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
   }
 
   Future<void> _generarPdf() async {
-    final url = Uri.parse('http://192.168.0.10:8091/api/inventario/${widget.assetTag}/pdf');
+    final host = ref.read(appHostBaseProvider);
+    final url = Uri.parse('$host/api/inventario/${widget.assetTag}/pdf');
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
