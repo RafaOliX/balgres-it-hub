@@ -68,10 +68,18 @@ class ItAssetCreate {
     this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
   });
 
-  Map<String, dynamic> toJson() => {
-    'asset_tag': assetTag, 'category': category, 'category_id': categoryId,
-    'brand': brand, 'model': model, 'serial_number': serialNumber,
-    'location': location, 'status': status, 'notes': notes,
-    'quantity': quantity, 'unit': unit, 'assigned_to': assignedTo,
-  };
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'asset_tag': assetTag, 'category': category, 'category_id': categoryId,
+      'brand': brand, 'model': model, 'quantity': quantity, 'unit': unit,
+    };
+    // Solo enviamos estos campos si tienen contenido real
+    if (serialNumber != null && serialNumber!.trim().isNotEmpty) map['serial_number'] = serialNumber;
+    if (location != null && location!.trim().isNotEmpty) map['location'] = location;
+    if (status != null && status!.isNotEmpty) map['status'] = status;
+    if (notes != null && notes!.trim().isNotEmpty) map['notes'] = notes;
+    if (assignedTo != null && assignedTo!.trim().isNotEmpty) map['assigned_to'] = assignedTo;
+    
+    return map;
+  }
 }

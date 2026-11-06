@@ -116,9 +116,15 @@ def crear(payload: ItAssetCreate, session: Session = Depends(get_session)):
     session.add(asset)
     try:
         session.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         session.rollback()
-        raise HTTPException(409, detail="Tag o S/N ya existen")
+        error_msg = str(e.orig).lower()
+        if 'serial_number' in error_msg:
+            raise HTTPException(409, detail="El Número de Serie (S/N) ya existe en otro equipo. Si el equipo no tiene S/N, déjalo en blanco.")
+        elif 'asset_tag' in error_msg:
+            raise HTTPException(409, detail="El Asset Tag ya existe. Por favor, cambia el Tag o selecciona otra categoría.")
+        else:
+            raise HTTPException(409, detail="Error de integridad en la base de datos. Revisa los datos.")
     session.refresh(asset)
     return asset
 

@@ -187,6 +187,37 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
+  void _showErrorDialog(String friendlyMsg, String technicalMsg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
+        title: const Text('Error al guardar'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(friendlyMsg, style: const TextStyle(fontSize: 15)),
+            const SizedBox(height: 16),
+            ExpansionTile(
+              title: const Text('Ver detalle técnico (Para el administrador)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
+                  child: Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.red)),
+                )
+              ],
+            )
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
+        ],
+      ),
+    );
+  }
+
   Widget _section(String title, List<Widget> children) {
     return Card(
       margin: const EdgeInsets.only(bottom: 24),
@@ -231,22 +262,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                if (_error != null) 
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16), 
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500))),
-                        ],
-                      ),
-                    )
-                  ),
-                
+
                 _section('Fotografía', [
                   GestureDetector(
                     onTap: () => showModalBottomSheet(
