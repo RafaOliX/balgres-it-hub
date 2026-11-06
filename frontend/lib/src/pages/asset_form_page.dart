@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../data/providers.dart';
 import '../models/it_asset.dart';
+import '../models/category.dart';
 
 class AssetFormPage extends ConsumerStatefulWidget {
   const AssetFormPage({super.key});
@@ -14,7 +15,6 @@ class AssetFormPage extends ConsumerStatefulWidget {
 class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _form = GlobalKey<FormState>();
   final _tag = TextEditingController();
-  final _category = TextEditingController(text: 'Monitor');
   final _brand = TextEditingController();
   final _model = TextEditingController();
   final _serial = TextEditingController();
@@ -23,6 +23,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _notes = TextEditingController();
   final _quantity = TextEditingController(text: '1');
   
+  Category? _selectedCategory;
   String _unit = 'Unidad';
   String _status = 'Operativo';
   final List<XFile> _files = [];
@@ -30,47 +31,91 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   bool _cargandoTag = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _generarTag(_category.text));
+  Future<void> _onCategorySelected(Category? cat) async {
+    if (cat == null) return;
+    setState(() { 
+      _selectedCategory = cat; 
+      _unit = cat.unit; 
+      _cargandoTag = true; 
+    });
+    try {
+      final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(cat.id);
+      setState(() => _tag.text = nextTag);
+    } catch (e) {
+      setState(() => _tag.text = '');
+    } finally {
+      setState(() => _cargandoTag = false);
+    }
   }
 
-  // Al cambiar o escribir la categoría, generamos el Tag
-  Future<void> _generarTag(String category) async {
-    if (category.trim().isEmpty) return;
-    setState(() { _cargandoTag = true; });
-    try {
-      final api = ref.read(inventarioApiProvider);
-      final nextTag = await api.getSiguienteTag(category);
-      setState(() { _tag.text = nextTag; });
-    } catch (e) {
-      // Si falla, ponemos un tag genérico
-      setState(() { _tag.text = 'ACT-001'; });
-    } finally {
-      setState(() { _cargandoTag = false; });
-    }
+  Future<void> _crearCategoriaRapida() async {
+    final nameCtrl = TextEditingController();
+    final prefixCtrl = TextEditingController();
+    String unit = 'Unidad';
+    bool reqSn = true;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text('Nueva Categoría'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre (Ej: Cable HDMI)')),
+              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)')),
+              DropdownButtonFormField<String>(
+                value: unit, decoration: const InputDecoration(labelText: 'Unidad'),
+                items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (v) => setModalState(() => unit = v!),
+              ),
+              CheckboxListTile(
+                title: const Text('¿Requiere S/N?'), value: reqSn,
+                onChanged: (v) => setModalState(() => reqSn = v!),
+              )
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () async {
+                if (nameCtrl.text.isEmpty || prefixCtrl.text.isEmpty) return;
+                try {
+                  final newCat = await ref.read(inventarioApiProvider).crearCategoria(Category(
+                    id: 0, name: nameCtrl.text, prefix: prefixCtrl.text, unit: unit, requiresSn: reqSn,
+                  ));
+                  ref.invalidate(categoriasListProvider);
+                  if (mounted) Navigator.pop(ctx);
+                  _onCategorySelected(newCat); // Auto-seleccionar la nueva
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              },
+              child: const Text('Crear'),
+            )
+          ],
+        )
+      )
+    );
   }
 
   Future<void> _pickImages(ImageSource source) async {
     final picker = ImagePicker();
-    final picked = source == ImageSource.gallery
-        ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85)
-        : [if (await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85) != null) (await picker.pickImage(source: ImageSource.camera))!].whereType<XFile>().toList();
+    final picked = source == ImageSource.gallery ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85) : [if (await picker.pickImage(source: ImageSource.camera) != null) (await picker.pickImage(source: ImageSource.camera))!].whereType<XFile>().toList();
     if (picked.isEmpty) return;
     setState(() => _files.addAll(picked));
   }
 
   Future<void> _submit() async {
-    if (!_form.currentState!.validate()) return;
+    if (!_form.currentState!.validate() || _selectedCategory == null) return;
     setState(() { _saving = true; _error = null; });
     try {
       final api = ref.read(inventarioApiProvider);
       final asset = await api.crear(ItAssetCreate(
-        assetTag: _tag.text.trim(), category: _category.text.trim(), brand: _brand.text.trim(),
-        model: _model.text.trim(), serialNumber: _serial.text.trim(), location: _location.text.trim(),
-        status: _status, notes: _notes.text.trim(), quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit,
-        assignedTo: _assignedTo.text.trim(),
+        assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
+        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
+        location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
+        quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
       ref.invalidate(inventarioListProvider);
@@ -82,14 +127,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
-  // Lista de sugerencias para el autocompletado
-  static const List<String> _categoriasSugeridas = [
-    'Monitor', 'Computadora', 'Impresora', 'Laptop', 'Switch', 'Router',
-    'Cable UTP', 'Cable VGA', 'Cable de Poder', 'Cable HDMI', 'Disco Duro', 'Memoria RAM'
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final categoriasAsync = ref.watch(categoriasListProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Nuevo activo')),
       body: Form(
@@ -102,95 +143,64 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
               onTap: () => _pickImages(ImageSource.gallery),
               child: Container(
                 height: 100, decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.add_a_photo_outlined, color: Colors.grey), Text('Fotos'),
-                ]),
+                child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey), Text('Fotos')]),
               ),
             ),
             const SizedBox(height: 16),
             
-            // AUTOCOMPLETE PARA CATEGORÍA
-            Autocomplete<String>(
-              initialValue: TextEditingValue(text: _category.text),
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                if (textEditingValue.text == '') return const Iterable<String>.empty();
-                return _categoriasSugeridas.where((String option) {
-                  return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                });
-              },
-              onSelected: (String selection) {
-                _category.text = selection;
-                _generarTag(selection);
-              },
-              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                // Sincronizamos el controlador interno con el nuestro
-                textEditingController.addListener(() {
-                  if (_category.text != textEditingController.text) {
-                    _category.text = textEditingController.text;
-                  }
-                });
-                return TextFormField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Categoría *', 
-                    hintText: 'Ej: Monitor, Cable UTP, etc.',
-                    suffixIcon: Icon(Icons.arrow_drop_down)
+            // SELECTOR DE CATEGORÍA CON BOTÓN DE CREAR
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: categoriasAsync.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (e, _) => Text('Error: $e'),
+                    data: (cats) => DropdownButtonFormField<Category>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(labelText: 'Categoría *'),
+                      items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                      onChanged: _onCategorySelected,
+                      validator: (v) => v == null ? 'Requerido' : null,
+                    ),
                   ),
-                  validator: (v) => v!.isEmpty ? 'Requerido' : null,
-                  onFieldSubmitted: (v) {
-                    _category.text = v;
-                    _generarTag(v);
-                  },
-                );
-              },
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: _crearCategoriaRapida,
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Crear nueva categoría',
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             
-            // TAG GENERADO (EDITABLE)
             TextFormField(
-              controller: _tag,
+              controller: _tag, readOnly: true,
               decoration: InputDecoration(
-                labelText: 'Asset Tag (Sugerido)',
-                helperText: 'Puedes cambiarlo si lo deseas',
-                suffixIcon: _cargandoTag 
-                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) 
-                  : IconButton(
-                      icon: const Icon(Icons.refresh, size: 20),
-                      onPressed: () => _generarTag(_category.text),
-                      tooltip: 'Regenerar Tag',
-                    ),
+                labelText: 'Asset Tag (Automático)',
+                suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
               ),
             ),
             const SizedBox(height: 10),
 
-            // DATOS BÁSICOS
             Row(children: [
               Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
               const SizedBox(width: 10),
               Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
             ]),
-            TextFormField(
-              controller: _serial, 
-              decoration: const InputDecoration(labelText: 'S/N (Opcional)'),
-            ),
             
-            // CANTIDAD Y UNIDAD
+            // S/N dinámico (solo si la categoría lo requiere)
+            if (_selectedCategory?.requiresSn ?? true)
+              TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N (Opcional)')),
+            
             Row(children: [
               Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
               const SizedBox(width: 10),
-              Expanded(child: DropdownButtonFormField<String>(
-                value: _unit, decoration: const InputDecoration(labelText: 'Unidad'),
-                items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _unit = v!),
-              )),
+              Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))), // Unidad bloqueada por la categoría
             ]),
             
-            // ASIGNACIÓN
-            TextFormField(
-              controller: _assignedTo, 
-              decoration: const InputDecoration(labelText: 'Asignado a (Responsable)'),
-            ),
+            TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)')),
             TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física')),
             DropdownButtonFormField<String>(
               value: _status, decoration: const InputDecoration(labelText: 'Estado'),

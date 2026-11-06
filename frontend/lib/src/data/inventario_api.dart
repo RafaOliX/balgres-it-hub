@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
+import '../models/category.dart';
 
 class InventarioApi {
   final Dio _dio;
@@ -19,6 +20,20 @@ class InventarioApi {
           },
         ));
 
+  // CATEGORÍAS
+  Future<List<Category>> getCategorias() async {
+    final r = await _dio.get<List<dynamic>>('/inventario/categories');
+    return (r.data ?? []).map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Category> crearCategoria(Category cat) async {
+    final r = await _dio.post<Map<String, dynamic>>('/inventario/categories', data: cat.toJson());
+    return Category.fromJson(r.data!);
+  }
+
+  Future<void> eliminarCategoria(int id) async => await _dio.delete('/inventario/categories/$id');
+
+  // ACTIVOS
   Future<List<ItAsset>> listar() async {
     final r = await _dio.get<List<dynamic>>('/inventario/');
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
@@ -29,8 +44,8 @@ class InventarioApi {
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<String> getSiguienteTag(String category) async {
-    final r = await _dio.get<Map<String, dynamic>>('/inventario/siguiente-tag', queryParameters: {'category': category});
+  Future<String> getSiguienteTag(int categoryId) async {
+    final r = await _dio.get<Map<String, dynamic>>('/inventario/siguiente-tag', queryParameters: {'category_id': categoryId});
     return r.data!['tag'] as String;
   }
 
@@ -39,24 +54,7 @@ class InventarioApi {
     return ItAsset.fromJson(r.data!);
   }
 
-  Future<ItAsset> actualizar(String currentTag, {
-    String? assetTag, String? category, String? brand, String? model,
-    String? serialNumber, String? location, String? status, String? notes,
-    int? quantity, String? unit, String? assignedTo,
-  }) async {
-    final body = <String, dynamic>{
-      if (assetTag != null) 'asset_tag': assetTag,
-      if (category != null) 'category': category,
-      if (brand != null) 'brand': brand,
-      if (model != null) 'model': model,
-      if (serialNumber != null) 'serial_number': serialNumber,
-      if (location != null) 'location': location,
-      if (status != null) 'status': status,
-      if (notes != null) 'notes': notes,
-      if (quantity != null) 'quantity': quantity,
-      if (unit != null) 'unit': unit,
-      if (assignedTo != null) 'assigned_to': assignedTo,
-    };
+  Future<ItAsset> actualizar(String currentTag, Map<String, dynamic> body) async {
     final r = await _dio.patch<Map<String, dynamic>>('/inventario/$currentTag', data: body);
     return ItAsset.fromJson(r.data!);
   }
@@ -72,7 +70,7 @@ class InventarioApi {
     final parts = <MultipartFile>[];
     for (final f in files) {
       final bytes = await f.readAsBytes();
-      final mime = f.mimeType ?? (f.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+      final mime = f.mimeType ?? 'image/jpeg';
       parts.add(MultipartFile.fromBytes(bytes, filename: f.name, contentType: DioMediaType.parse(mime)));
     }
     final form = FormData.fromMap({'files': parts});
@@ -83,9 +81,7 @@ class InventarioApi {
   Future<void> eliminarImagen(String tag, int imageId) async => await _dio.delete<void>('/inventario/$tag/images/$imageId');
 
   Future<void> importarExcel(Uint8List bytes) async {
-    final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: 'import.xlsx'),
-    });
+    final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: 'import.xlsx')});
     await _dio.post('/inventario/import', data: form, options: Options(contentType: 'multipart/form-data'));
   }
 }
