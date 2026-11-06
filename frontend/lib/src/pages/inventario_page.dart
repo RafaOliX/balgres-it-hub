@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../data/providers.dart';
 import '../models/it_asset.dart';
@@ -24,13 +22,11 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
   String _statusFilter = 'Todos';
 
   Future<void> _exportarExcel() async {
-    final host = ref.read(appHostBaseProvider);
-    // Si estamos en Web, usamos ruta relativa. Si estamos en Android, usamos la IP base.
-    final url = Uri.parse(kIsWeb ? '/api/inventario/export' : '$host/api/inventario/export');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir el archivo')));
+    try {
+      await ref.read(inventarioApiProvider).descargarExcel();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando Excel...')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -258,10 +254,7 @@ class _AssetsTable extends StatelessWidget {
               onSelectChanged: (_) => context.push('/inventario/detalle/${a.assetTag}'),
               cells: [
                 DataCell(Row(children: [
-                  GestureDetector(
-                    onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); },
-                    child: AssetThumbnail(asset: a, size: 40),
-                  ),
+                  GestureDetector(onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); }, child: AssetThumbnail(asset: a, size: 40)),
                   const SizedBox(width: 8), 
                   Text(a.assetTag, style: const TextStyle(fontWeight: FontWeight.w600))
                 ])),

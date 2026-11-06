@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../data/providers.dart';
 import '../models/it_asset.dart';
@@ -44,6 +43,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
+  // ARREGLO CÁMARA: Igual que en el formulario, ya no la abre dos veces
   Future<void> _agregarImagenes() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -53,8 +53,17 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       ])),
     );
     if (source == null) return;
+    
     final picker = ImagePicker();
-    final picked = source == ImageSource.gallery ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85) : [if (await picker.pickImage(source: ImageSource.camera) != null) (await picker.pickImage(source: ImageSource.camera))!].whereType<XFile>().toList();
+    List<XFile> picked = [];
+    if (source == ImageSource.camera) {
+      final XFile? photo = await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85);
+      if (photo != null) picked.add(photo);
+    } else {
+      final List<XFile> photos = await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85);
+      picked.addAll(photos);
+    }
+
     if (picked.isEmpty) return;
     try {
       await ref.read(inventarioApiProvider).subirImagenes(_asset!.assetTag, picked);
@@ -66,8 +75,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
 
   Future<void> _eliminarImagen(ItAssetImage img) async {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Eliminar foto'),
-      content: const Text('¿Borrar esta foto del activo?'),
+      title: const Text('Eliminar foto'), content: const Text('¿Borrar esta foto del activo?'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
         FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
@@ -80,12 +88,6 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
-  }
-
-  Future<void> _generarPdf() async {
-    final host = ref.read(appHostBaseProvider);
-    final url = Uri.parse('$host/api/inventario/${widget.assetTag}/pdf');
-    if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _eliminarActivo() async {
@@ -103,6 +105,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
+  // MEJORADO: Ahora acepta URL relativa y funciona en web/móvil
   void _showImageDialog(BuildContext context, String imageUrl) {
     showDialog(
       context: context,
@@ -137,7 +140,6 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
           backgroundColor: Colors.white,
           title: Text(widget.assetTag),
           actions: [
-            IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _asset != null ? _generarPdf : null, tooltip: 'Generar PDF'),
             IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () async {
               if (_asset != null) {
                 await Navigator.push(context, MaterialPageRoute(builder: (_) => AssetEditPage(asset: _asset!)));
@@ -150,9 +152,9 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
         ),
         body: _loading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Text(_error!)) : TabBarView(
           children: [
-            ListView(padding: const EdgeInsets.all(16), children: [
+            ListView(padding: const EdgeInsets.all(24), children: [
               _galeriaFotos(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               _card('Información', [
                 _kv('Tag', _asset!.assetTag),
                 _kv('Cantidad', '${_asset!.quantity} ${_asset!.unit}'),
@@ -165,17 +167,17 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 _kv('Asignado a', _asset!.assignedTo ?? '—'),
               ]),
               if (_asset!.notes != null && _asset!.notes!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _card('Notas', [Text(_asset!.notes!, style: const TextStyle(fontSize: 13, height: 1.5))]),
+                const SizedBox(height: 16),
+                _card('Notas', [Text(_asset!.notes!, style: const TextStyle(fontSize: 14, height: 1.5))]),
               ],
             ]),
             _history.isEmpty ? const Center(child: Text('Sin cambios registrados')) : ListView.separated(
-              padding: const EdgeInsets.all(16), itemCount: _history.length, separatorBuilder: (_, __) => const Divider(),
+              padding: const EdgeInsets.all(24), itemCount: _history.length, separatorBuilder: (_, __) => const Divider(),
               itemBuilder: (_, i) => ListTile(
                 leading: const Icon(Icons.history, color: Colors.blue),
-                title: Text('Cambió: ${_history[i].fieldName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                title: Text('Cambió: ${_history[i].fieldName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: Text('De: ${_history[i].oldValue ?? "vacío"} a: ${_history[i].newValue ?? "vacío"}'),
-                trailing: Text(_history[i].changedAt.toString().substring(0, 16), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                trailing: Text(_history[i].changedAt.toString().substring(0, 16), style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ),
             ),
           ],
@@ -186,64 +188,73 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
 
   Widget _galeriaFotos() {
     final imgs = _asset!.images;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey))),
-              TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 16), label: const Text('Agregar')),
-            ],
-          ),
-          if (imgs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 12))),
-            )
-          else
-            SizedBox(
-              height: 120,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: imgs.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: () => _showImageDialog(context, imgs[i].url),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(imgs[i].url, width: 160, height: 120, fit: BoxFit.cover),
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF6B7280), letterSpacing: 0.8))),
+                TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 18), label: const Text('Agregar')),
+              ],
+            ),
+            if (imgs.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 13))))
+            else
+              SizedBox(
+                height: 140,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: imgs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (_, i) => Stack(
+                    children: [
+                      GestureDetector(
+                        onTap: () => _showImageDialog(context, imgs[i].url),
+                        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imgs[i].url, width: 180, height: 140, fit: BoxFit.cover)),
                       ),
-                    ),
-                    Positioned(
-                      top: 4, right: 4,
-                      child: Material(
-                        color: Colors.redAccent, // Botón de borrar claro
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => _eliminarImagen(imgs[i]),
-                          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.delete, size: 14, color: Colors.white)),
+                      Positioned(
+                        top: 6, right: 6,
+                        child: Material(
+                          color: Colors.redAccent,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _eliminarImagen(imgs[i]),
+                            child: const Padding(padding: EdgeInsets.all(6), child: Icon(Icons.delete, size: 16, color: Colors.white)),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _card(String title, List<Widget> children) => Container(
-    padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)), const SizedBox(height: 10), ...children]),
+  Widget _card(String title, List<Widget> children) => Card(
+    elevation: 0,
+    margin: const EdgeInsets.only(bottom: 16),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF6B7280), letterSpacing: 0.8)),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    ),
   );
 
-  Widget _kv(String k, String v) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [SizedBox(width: 90, child: Text(k, style: const TextStyle(fontSize: 12, color: Colors.grey))), Expanded(child: Text(v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)))]));
+  Widget _kv(String k, String v) => Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [SizedBox(width: 100, child: Text(k, style: const TextStyle(fontSize: 13, color: Colors.grey))), Expanded(child: Text(v, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)))]));
 }

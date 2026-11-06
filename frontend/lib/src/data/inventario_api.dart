@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
 import '../models/category.dart';
@@ -20,7 +21,6 @@ class InventarioApi {
           },
         ));
 
-  // CATEGORÍAS
   Future<List<Category>> getCategorias() async {
     final r = await _dio.get<List<dynamic>>('/inventario/categories');
     return (r.data ?? []).map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
@@ -38,7 +38,6 @@ class InventarioApi {
 
   Future<void> eliminarCategoria(int id) async => await _dio.delete('/inventario/categories/$id');
 
-  // ACTIVOS
   Future<List<ItAsset>> listar() async {
     final r = await _dio.get<List<dynamic>>('/inventario/');
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
@@ -88,5 +87,26 @@ class InventarioApi {
   Future<void> importarExcel(Uint8List bytes) async {
     final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: 'import.xlsx')});
     await _dio.post('/inventario/import', data: form, options: Options(contentType: 'multipart/form-data'));
+  }
+
+  // --- DESCARGAS ---
+  Future<void> descargarExcel() async {
+    final r = await _dio.get<List<int>>('/inventario/export', options: Options(responseType: ResponseType.bytes));
+    await FileSaver.instance.saveFile(
+      name: 'inventario',
+      bytes: Uint8List.fromList(r.data!),
+      fileExtension: 'xlsx',
+      mimeType: MimeType.microsoftExcel,
+    );
+  }
+
+  Future<void> descargarPdf(String tag) async {
+    final r = await _dio.get<List<int>>('/inventario/$tag/pdf', options: Options(responseType: ResponseType.bytes));
+    await FileSaver.instance.saveFile(
+      name: 'acta_$tag',
+      bytes: Uint8List.fromList(r.data!),
+      fileExtension: 'pdf',
+      mimeType: MimeType.pdf,
+    );
   }
 }

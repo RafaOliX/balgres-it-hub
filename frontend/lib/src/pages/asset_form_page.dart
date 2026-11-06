@@ -25,7 +25,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   
   Category? _selectedCategory;
   String _unit = 'Unidad';
-  String _status = 'Operativo';
+  String _status = 'Borrador';
   final List<XFile> _files = [];
   bool _saving = false;
   bool _cargandoTag = false;
@@ -55,21 +55,26 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => AlertDialog(
           title: const Text('Nueva Categoría'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre (Ej: Cable HDMI)')),
-              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)')),
-              DropdownButtonFormField<String>(
-                value: unit, decoration: const InputDecoration(labelText: 'Unidad'),
-                items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setModalState(() => unit = v!),
-              ),
-              CheckboxListTile(
-                title: const Text('¿Requiere S/N?'), value: reqSn,
-                onChanged: (v) => setModalState(() => reqSn = v!),
-              )
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
+                  items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (v) => setModalState(() => unit = v!),
+                ),
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  title: const Text('¿Requiere S/N?'), value: reqSn,
+                  onChanged: (v) => setModalState(() => reqSn = v!),
+                )
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
@@ -95,11 +100,20 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     );
   }
 
+  // ARREGLO DE LA CÁMARA: Ahora solo llama a pickImage una vez
   Future<void> _pickImages(ImageSource source) async {
     final picker = ImagePicker();
-    final picked = source == ImageSource.gallery ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85) : [if (await picker.pickImage(source: ImageSource.camera) != null) (await picker.pickImage(source: ImageSource.camera))!].whereType<XFile>().toList();
-    if (picked.isEmpty) return;
-    setState(() => _files.addAll(picked));
+    if (source == ImageSource.camera) {
+      final XFile? photo = await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85);
+      if (photo != null) {
+        setState(() => _files.add(photo));
+      }
+    } else {
+      final List<XFile> photos = await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85);
+      if (photos.isNotEmpty) {
+        setState(() => _files.addAll(photos));
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -125,16 +139,16 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
   Widget _section(String title, List<Widget> children) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 24), // Más espacio entre tarjetas
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24), // Más padding interno
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.6)),
-            const SizedBox(height: 16),
+            Text(title.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8)),
+            const SizedBox(height: 20), // Espacio debajo del título
             ...children,
           ],
         ),
@@ -148,14 +162,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
-      appBar: AppBar(
-        title: const Text('Nuevo activo'),
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-      ),
-      body: Center( // Centrar el formulario
+      appBar: AppBar(title: const Text('Nuevo activo'), backgroundColor: Colors.white, elevation: 0.5),
+      body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800), // Ancho máximo cómodo
+          constraints: const BoxConstraints(maxWidth: 800),
           child: Form(
             key: _form,
             child: ListView(
@@ -165,12 +175,35 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 
                 _section('Fotografía', [
                   GestureDetector(
-                    onTap: () => _pickImages(ImageSource.gallery),
+                    onTap: () => showModalBottomSheet(
+                      context: context,
+                      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Tomar foto'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.camera); }),
+                        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Elegir de galería'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.gallery); }),
+                      ])),
+                    ),
                     child: Container(
-                      height: 100, width: double.infinity, decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                      child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey), Text('Agregar fotos', style: TextStyle(color: Colors.grey))]),
+                      height: 120, width: double.infinity, decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                      child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 32), SizedBox(height: 8), Text('Agregar fotos', style: TextStyle(color: Colors.grey))]),
                     ),
                   ),
+                  if (_files.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _files.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) => Stack(
+                          children: [
+                            FutureBuilder(future: _files[i].readAsBytes(), builder: (_, snap) => snap.hasData ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(snap.data!, width: 100, height: 100, fit: BoxFit.cover)) : Container(width: 100, height: 100, color: Colors.grey[200])),
+                            Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 16), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () => setState(() => _files.removeAt(i)))),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ]
                 ]),
 
                 _section('Identificación', [
@@ -191,12 +224,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear nueva categoría',
-                      ),
+                      IconButton.filledTonal(onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear nueva'),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16), // Espacio entre campos
                   TextFormField(
                     controller: _tag, readOnly: true,
                     decoration: InputDecoration(
@@ -204,36 +235,36 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                       suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'N/S (Opcional)', border: OutlineInputBorder())),
                 ]),
 
                 _section('Detalles del Equipo', [
                   Row(children: [
                     Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca', border: OutlineInputBorder()))),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()))),
                   ]),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Row(children: [
                     Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad', border: OutlineInputBorder()))),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()), child: Text(_unit))),
                   ]),
                 ]),
 
                 _section('Asignación y Ubicación', [
                   TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)', border: OutlineInputBorder())),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física', border: OutlineInputBorder())),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _status, decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
                     items: ['Borrador', 'Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (v) => setState(() => _status = v!),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 2),
+                  const SizedBox(height: 16),
+                  TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 3),
                 ]),
 
                 const SizedBox(height: 16),
@@ -241,10 +272,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   height: 50,
                   child: FilledButton(
                     onPressed: (_saving || _cargandoTag) ? null : _submit,
-                    style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
-                    child: _saving 
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Guardar Activo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: _saving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar Activo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(height: 40),
