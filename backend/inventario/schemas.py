@@ -41,13 +41,12 @@ class ItAssetCreate(BaseModel):
     model: str = Field(max_length=128)
     serial_number: Optional[str] = None
     location: Optional[str] = None
-    status: Optional[str] = "Borrador"
+    status: Optional[str] = "Operativo"
     notes: Optional[str] = None
     quantity: Optional[int] = 1
     unit: Optional[str] = "Unidad"
     assigned_to: Optional[str] = None
 
-    # Convertir S/N vacío a None
     @field_validator('serial_number', 'location', 'notes', 'assigned_to')
     @classmethod
     def empty_to_none(cls, v: str | None) -> str | None:

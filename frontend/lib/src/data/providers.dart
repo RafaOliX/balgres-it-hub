@@ -43,7 +43,7 @@ class AssetDraft {
   AssetDraft({
     this.tag = '', this.brand = '', this.model = '', this.serial = '',
     this.location = '', this.assignedTo = '', this.notes = '',
-    this.quantity = '1', this.unit = 'Unidad', this.status = 'Borrador',
+    this.quantity = '1', this.unit = 'Unidad', this.status = 'Operativo',
     this.categoryId, this.categoryName = '',
   });
 }
