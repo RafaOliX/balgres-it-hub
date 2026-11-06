@@ -13,10 +13,10 @@ import 'pages/dashboard_page.dart';
 
 const _apiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: '/api', // En web, relativo al host
+  defaultValue: '/api', 
 );
 
-// URL absoluta para el celular, relativa para la web
+// CORREGIDO AQUÍ: Sin el \; al final
 final String _hostBase = kIsWeb ? '' : 'http://192.168.0.10:8091'\;
 
 void main() => runApp(const BalgresItApp());
@@ -39,7 +39,8 @@ final _router = GoRouter(
             ),
           ],
         ),
-        GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()), // <--- RUTA AÑADIDA
+        // RUTA DE CATEGORÍAS
+        GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
       ],
     ),
   ],
@@ -86,7 +87,6 @@ class _BalgresItAppState extends State<BalgresItApp> {
     return ProviderScope(
       overrides: [
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
-        // Inyectamos la URL base absoluta (o relativa en web) a un provider para usarla en descargas
         appHostBaseProvider.overrideWithValue(_hostBase), 
       ],
       child: MaterialApp.router(
