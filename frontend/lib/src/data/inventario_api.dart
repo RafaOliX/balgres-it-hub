@@ -95,7 +95,7 @@ class InventarioApi {
     await FileSaver.instance.saveFile(
       name: 'inventario',
       bytes: Uint8List.fromList(r.data!),
-      fileExtension: 'xlsx',
+      ext: 'xlsx', // <--- AQUÍ ESTÁ EL CAMBIO (era fileExtension)
       mimeType: MimeType.microsoftExcel,
     );
   }
@@ -105,7 +105,7 @@ class InventarioApi {
     await FileSaver.instance.saveFile(
       name: 'acta_$tag',
       bytes: Uint8List.fromList(r.data!),
-      fileExtension: 'pdf',
+      ext: 'pdf', // <--- AQUÍ ESTÁ EL CAMBIO
       mimeType: MimeType.pdf,
     );
   }
