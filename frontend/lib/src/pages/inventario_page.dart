@@ -10,7 +10,7 @@ import '../widgets/asset_card.dart';
 import '../widgets/asset_thumbnail.dart';
 
 const _primary = Color(0xFF4F46E5);
-const _bg = Color(0xFFFAFAFA);
+const _bg = Color(0xFFF3F4F6);
 const _border = Color(0xFFE5E7EB);
 
 class InventarioPage extends ConsumerStatefulWidget {
@@ -28,11 +28,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
   }
 
   Future<void> _importarExcel() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      withData: true,
-    );
+    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx'], withData: true);
     if (result != null && result.files.single.bytes != null) {
       try {
         await ref.read(inventarioApiProvider).importarExcel(result.files.single.bytes!);
@@ -68,12 +64,9 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
       body: Column(
         children: [
           _Header(
-            query: query,
-            onQuery: (v) => ref.read(inventarioQueryProvider.notifier).state = v,
-            onNew: () => context.push('/inventario/nuevo'),
-            isMobile: isMobile,
-            onExport: _exportarExcel,
-            onImport: _importarExcel,
+            query: query, onQuery: (v) => ref.read(inventarioQueryProvider.notifier).state = v,
+            onNew: () => context.push('/inventario/nuevo'), isMobile: isMobile,
+            onExport: _exportarExcel, onImport: _importarExcel,
           ),
           Expanded(
             child: async.when(
@@ -125,7 +118,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, isMobile ? 10 : 24, isMobile ? 16 : 24, 16),
-      color: Colors.white,
+      color: Colors.white, // Fondo blanco para el header
       child: Column(
         children: [
           if (!isMobile)
@@ -226,7 +219,31 @@ class _AssetsTable extends StatelessWidget {
             return DataRow(
               onSelectChanged: (_) => context.push('/inventario/detalle/${a.assetTag}'),
               cells: [
-                DataCell(Row(children: [AssetThumbnail(asset: a, size: 32), const SizedBox(width: 8), Text(a.assetTag, style: const TextStyle(fontWeight: FontWeight.w600))])),
+                DataCell(Row(children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (a.imageUrl != null) {
+                        showDialog(
+                          context: context,
+                          builder: (_) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            insetPadding: const EdgeInsets.all(16),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                InteractiveViewer(child: Image.network(a.imageUrl!, fit: BoxFit.contain)),
+                                Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.black54), onPressed: () => Navigator.pop(context))),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: AssetThumbnail(asset: a, size: 40),
+                  ),
+                  const SizedBox(width: 8), 
+                  Text(a.assetTag, style: const TextStyle(fontWeight: FontWeight.w600))
+                ])),
                 DataCell(Text('${a.quantity} ${a.unit}')),
                 DataCell(Text(a.category)),
                 DataCell(Text('${a.brand} ${a.model}')),

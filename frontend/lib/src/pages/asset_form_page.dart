@@ -33,11 +33,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
   Future<void> _onCategorySelected(Category? cat) async {
     if (cat == null) return;
-    setState(() { 
-      _selectedCategory = cat; 
-      _unit = cat.unit; 
-      _cargandoTag = true; 
-    });
+    setState(() { _selectedCategory = cat; _unit = cat.unit; _cargandoTag = true; });
     try {
       final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(cat.id);
       setState(() => _tag.text = nextTag);
@@ -86,7 +82,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   ));
                   ref.invalidate(categoriasListProvider);
                   if (mounted) Navigator.pop(ctx);
-                  _onCategorySelected(newCat); // Auto-seleccionar la nueva
+                  _onCategorySelected(newCat);
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
@@ -127,94 +123,134 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
+  Widget _section(String title, List<Widget> children) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.6)),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final categoriasAsync = ref.watch(categoriasListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo activo')),
-      body: Form(
-        key: _form,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
-            GestureDetector(
-              onTap: () => _pickImages(ImageSource.gallery),
-              child: Container(
-                height: 100, decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey), Text('Fotos')]),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // SELECTOR DE CATEGORÍA CON BOTÓN DE CREAR
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+      backgroundColor: const Color(0xFFF3F4F6),
+      appBar: AppBar(
+        title: const Text('Nuevo activo'),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+      ),
+      body: Center( // Centrar el formulario
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800), // Ancho máximo cómodo
+          child: Form(
+            key: _form,
+            child: ListView(
+              padding: const EdgeInsets.all(24),
               children: [
-                Expanded(
-                  child: categoriasAsync.when(
-                    loading: () => const LinearProgressIndicator(),
-                    error: (e, _) => Text('Error: $e'),
-                    data: (cats) => DropdownButtonFormField<Category>(
-                      value: _selectedCategory,
-                      decoration: const InputDecoration(labelText: 'Categoría *'),
-                      items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
-                      onChanged: _onCategorySelected,
-                      validator: (v) => v == null ? 'Requerido' : null,
+                if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+                
+                _section('Fotografía', [
+                  GestureDetector(
+                    onTap: () => _pickImages(ImageSource.gallery),
+                    child: Container(
+                      height: 100, width: double.infinity, decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                      child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey), Text('Agregar fotos', style: TextStyle(color: Colors.grey))]),
                     ),
                   ),
+                ]),
+
+                _section('Identificación', [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: categoriasAsync.when(
+                          loading: () => const LinearProgressIndicator(),
+                          error: (e, _) => Text('Error: $e'),
+                          data: (cats) => DropdownButtonFormField<Category>(
+                            value: _selectedCategory,
+                            decoration: const InputDecoration(labelText: 'Categoría *', border: OutlineInputBorder()),
+                            items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                            onChanged: _onCategorySelected,
+                            validator: (v) => v == null ? 'Requerido' : null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear nueva categoría',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _tag, readOnly: true,
+                    decoration: InputDecoration(
+                      labelText: 'Asset Tag (Automático)', border: const OutlineInputBorder(), filled: true, fillColor: Colors.grey[50],
+                      suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'N/S (Opcional)', border: OutlineInputBorder())),
+                ]),
+
+                _section('Detalles del Equipo', [
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca', border: OutlineInputBorder()))),
+                    const SizedBox(width: 12),
+                    Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()))),
+                  ]),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad', border: OutlineInputBorder()))),
+                    const SizedBox(width: 12),
+                    Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()), child: Text(_unit))),
+                  ]),
+                ]),
+
+                _section('Asignación y Ubicación', [
+                  TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)', border: OutlineInputBorder())),
+                  const SizedBox(height: 12),
+                  TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física', border: OutlineInputBorder())),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _status, decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
+                    items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: (v) => setState(() => _status = v!),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 2),
+                ]),
+
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 50,
+                  child: FilledButton(
+                    onPressed: (_saving || _cargandoTag) ? null : _submit,
+                    style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
+                    child: _saving 
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Guardar Activo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  onPressed: _crearCategoriaRapida,
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Crear nueva categoría',
-                ),
+                const SizedBox(height: 40),
               ],
             ),
-            const SizedBox(height: 10),
-            
-            TextFormField(
-              controller: _tag, readOnly: true,
-              decoration: InputDecoration(
-                labelText: 'Asset Tag (Automático)',
-                suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            Row(children: [
-              Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
-              const SizedBox(width: 10),
-              Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
-            ]),
-            
-            // S/N dinámico (solo si la categoría lo requiere)
-            if (_selectedCategory?.requiresSn ?? true)
-              TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N (Opcional)')),
-            
-            Row(children: [
-              Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
-              const SizedBox(width: 10),
-              Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))), // Unidad bloqueada por la categoría
-            ]),
-            
-            TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)')),
-            TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física')),
-            DropdownButtonFormField<String>(
-              value: _status, decoration: const InputDecoration(labelText: 'Estado'),
-              items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (v) => setState(() => _status = v!),
-            ),
-            TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 2),
-            
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: (_saving || _cargandoTag) ? null : _submit, 
-              child: Text(_saving ? 'Guardando...' : 'Guardar activo')
-            ),
-          ],
+          ),
         ),
       ),
     );
