@@ -8,12 +8,10 @@ class AppLayout extends StatelessWidget {
   static const _destinations = [
     _Dest(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard', path: '/'),
     _Dest(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Inventario', path: '/inventario'),
-    _Dest(icon: Icons.category_outlined, selectedIcon: Icons.category, label: 'Categorías', path: '/categorias'),
   ];
 
   int _indexFor(String location) {
-    if (location.startsWith('/inventario')) return 1;
-    if (location.startsWith('/categorias')) return 2;
+    if (location.startsWith('/inventario') || location.startsWith('/categorias')) return 1;
     return 0;
   }
 
@@ -25,7 +23,7 @@ class AppLayout extends StatelessWidget {
 
     if (wide) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF3F4F6), // Fondo gris suave para contraste
+        backgroundColor: const Color(0xFFF3F4F6),
         body: Row(
           children: [
             NavigationRail(
@@ -33,16 +31,12 @@ class AppLayout extends StatelessWidget {
               onDestinationSelected: (i) => context.go(_destinations[i].path),
               labelType: NavigationRailLabelType.all,
               backgroundColor: Colors.white,
-              leading: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: _Brand(),
-              ),
+              leading: const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: _Brand()),
               destinations: _destinations.map((d) => NavigationRailDestination(
                 icon: Icon(d.icon), selectedIcon: Icon(d.selectedIcon), label: Text(d.label),
               )).toList(),
             ),
             const VerticalDivider(width: 1),
-            // AQUÍ ESTÁ LA MAGIA: Centrar el contenido a máximo 1400px
             Expanded(
               child: Center(
                 child: ConstrainedBox(
@@ -75,11 +69,7 @@ class _Brand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          width: 40, height: 40,
-          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(10)),
-          child: const Icon(Icons.business, color: Colors.white, size: 22),
-        ),
+        Container(width: 40, height: 40, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.business, color: Colors.white, size: 22)),
         const SizedBox(height: 6),
         const Text('Balgres IT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
       ],
