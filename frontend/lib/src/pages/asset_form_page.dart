@@ -34,7 +34,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   @override
   void initState() {
     super.initState();
-    // Recuperar el borrador si existía
     final draft = ref.read(assetDraftProvider);
     _tag = TextEditingController(text: draft.tag);
     _brand = TextEditingController(text: draft.brand);
@@ -46,6 +45,18 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     _quantity = TextEditingController(text: draft.quantity);
     _unit = draft.unit;
     _status = draft.status;
+
+    // Si hay datos en el borrador, avisar al usuario
+    if (draft.brand.isNotEmpty || draft.model.isNotEmpty || draft.notes.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se recuperó un borrador de activo no guardado.'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      });
+    }
   }
 
   void _guardarBorrador() {
@@ -152,18 +163,25 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
       
-      // Limpiar el borrador porque ya se guardó con éxito
       ref.read(assetDraftProvider.notifier).state = AssetDraft();
-      
       ref.invalidate(inventarioListProvider);
       if (mounted) context.pop();
     } catch (e) {
-      // Manejo amigable del error 409
       String errorMsg = '$e';
+      // Si es un error 409 (duplicado), intentamos obtener un nuevo tag automáticamente
       if (errorMsg.contains('409')) {
-        errorMsg = 'El Asset Tag o el Número de Serie ya existen. Por favor, revisa los datos.';
+        try {
+          final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(_selectedCategory!.id);
+          setState(() {
+            _tag.text = nextTag;
+            _error = 'El Tag que tenías fue ocupado por otro usuario. Te asignamos el nuevo Tag: $nextTag. Por favor, vuelve a darle a Guardar.';
+          });
+        } catch (_) {
+          setState(() => _error = 'El Asset Tag o el Número de Serie ya existen. Por favor, revisa los datos.');
+        }
+      } else {
+        setState(() => _error = errorMsg);
       }
-      setState(() => _error = errorMsg);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
