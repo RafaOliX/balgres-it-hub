@@ -35,6 +35,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   Timer? _autosaveTimer;
   bool _hasChanges = false;
   bool _autoSaved = false;
+  String? _draftTag; // Guarda el tag del borrador actual para hacer PATCH
 
   @override
   void initState() {
@@ -59,21 +60,32 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     if (!_hasChanges) setState(() => _hasChanges = true);
   }
 
-  // AUTOGUARDADO SILENCIOSO (No muestra errores en pantalla si falla)
   Future<void> _saveDraftSilently() async {
     _hasChanges = false;
     try {
-      await ref.read(inventarioApiProvider).crear(ItAssetCreate(
-        assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
-        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
-        location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
-        quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
-        isDraft: true,
-      ));
+      final api = ref.read(inventarioApiProvider);
+      if (_draftTag == null) {
+        // Crear el borrador por primera vez
+        final asset = await api.crear(ItAssetCreate(
+          assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
+          brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
+          location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
+          quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
+          isDraft: true,
+        ));
+        _draftTag = asset.assetTag;
+      } else {
+        // Actualizar el borrador existente
+        await api.actualizar(_draftTag!, {
+          'brand': _brand.text.trim(), 'model': _model.text.trim(), 'serial_number': _serial.text.trim(),
+          'location': _location.text.trim(), 'notes': _notes.text.trim(),
+          'quantity': int.tryParse(_quantity.text) ?? 1, 'assigned_to': _assignedTo.text.trim(),
+          'is_draft': true,
+        });
+      }
       if (mounted) setState(() => _autoSaved = true);
     } catch (e) {
-      // Si falla (ej. el tag ya existe), no hacemos nada. 
-      // El usuario decidirá guardar manualmente y ahí se le avisará.
+      // Ignorar errores de autoguardado silencioso
     }
   }
 
@@ -97,11 +109,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     try {
       final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(_selectedCategory!.id);
       setState(() => _tag.text = nextTag);
-    } catch (e) {
-      // ignore
-    } finally {
-      setState(() => _cargandoTag = false);
-    }
+    } catch (e) {} finally { setState(() => _cargandoTag = false); }
   }
 
   Future<void> _crearCategoriaRapida() async {
@@ -119,14 +127,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
               const SizedBox(height: 12),
-              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo', border: OutlineInputBorder())),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
                 items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setModalState(() => unit = v!),
               ),
-              const SizedBox(height: 12),
               CheckboxListTile(title: const Text('¿Requiere S/N?'), value: reqSn, onChanged: (v) => setModalState(() => reqSn = v!)),
             ]),
           ),
@@ -165,87 +172,65 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
-  String _parseDioError(dynamic e) {
-    if (e is DioException && e.response?.data is Map && e.response!.data['detail'] != null) {
-      return e.response!.data['detail'].toString();
-    }
-    return 'Error de conexión o del servidor. Revisa tu red o contacta al administrador.';
-  }
-
   Future<void> _submit() async {
     if (!_form.currentState!.validate() || _selectedCategory == null) return;
     setState(() { _saving = true; });
     try {
       final api = ref.read(inventarioApiProvider);
-      final asset = await api.crear(ItAssetCreate(
-        assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
-        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
-        location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
-        quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
-        isDraft: false,
-      ));
-      if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
+      
+      if (_draftTag == null) {
+        // Si no se ha creado el borrador aún, lo creamos como final
+        final asset = await api.crear(ItAssetCreate(
+          assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
+          brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
+          location: _location.text.trim(), status: _status, notes: _notes.text.trim(),
+          quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
+          isDraft: false,
+        ));
+        if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
+      } else {
+        // Si ya era un borrador, lo actualizamos y le quitamos el is_draft
+        await api.actualizar(_draftTag!, {
+          'brand': _brand.text.trim(), 'model': _model.text.trim(), 'serial_number': _serial.text.trim(),
+          'location': _location.text.trim(), 'status': _status, 'notes': _notes.text.trim(),
+          'quantity': int.tryParse(_quantity.text) ?? 1, 'assigned_to': _assignedTo.text.trim(),
+          'is_draft': false,
+        });
+        if (_files.isNotEmpty) await api.subirImagenes(_draftTag!, _files);
+      }
       
       ref.invalidate(inventarioListProvider);
       if (mounted) context.pop();
     } catch (e) {
-      final friendlyMsg = _parseDioError(e);
+      String friendlyMsg = 'Error al guardar.';
+      bool isTagError = false;
       
-      if (e is DioException && e.response?.statusCode == 409) {
-        // Conflicto de Tag: Ofrecer solución
+      if (e is DioException && e.response?.data is Map && e.response!.data['detail'] != null) {
+        friendlyMsg = e.response!.data['detail'].toString();
+        if (friendlyMsg.contains('Tag')) isTagError = true;
+      }
+
+      if (mounted) {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 40),
-            title: const Text('Tag duplicado'),
+            icon: Icon(isTagError ? Icons.warning_amber_rounded : Icons.error_outline, color: isTagError ? Colors.orange : Colors.red, size: 40),
+            title: Text(isTagError ? 'Tag duplicado' : 'Error de validación'),
             content: Text(friendlyMsg),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _generarNuevoTag();
-                },
-                child: const Text('Generar nuevo Tag'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
+              if (isTagError)
+                FilledButton(
+                  onPressed: () { Navigator.pop(ctx); _generarNuevoTag(); },
+                  child: const Text('Generar nuevo Tag'),
+                ),
             ],
-          )
+          ),
         );
-      } else {
-        _showTechnicalErrorDialog('Error al guardar', friendlyMsg, e.toString());
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  void _showTechnicalErrorDialog(String title, String friendlyMsg, String technicalMsg) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(friendlyMsg, style: const TextStyle(fontSize: 15)),
-            const SizedBox(height: 16),
-            ExpansionTile(
-              title: const Text('Detalle técnico (Admin)', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
-                  child: Text(technicalMsg, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.red)),
-                )
-              ],
-            )
-          ],
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido'))],
-      ),
-    );
   }
 
   @override
@@ -396,7 +381,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   height: 50,
                   child: FilledButton(
                     onPressed: (_saving || _cargandoTag) ? null : _submit,
-                    child: _saving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar Activo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: _saving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar y Finalizar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(height: 40),

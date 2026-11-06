@@ -43,7 +43,17 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
-  // ARREGLO CÁMARA: Igual que en el formulario, ya no la abre dos veces
+  Future<void> _finalizarBorrador() async {
+    if (_asset == null) return;
+    try {
+      await ref.read(inventarioApiProvider).actualizar(_asset!.assetTag, {'is_draft': false});
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activo finalizado correctamente.'), backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   Future<void> _agregarImagenes() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -90,42 +100,15 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
-  Future<void> _eliminarActivo() async {
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Eliminar activo'), content: Text('¿Borrar ${_asset!.assetTag}?'), actions: [
-      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-      FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
-    ]));
-    if (ok != true) return;
-    try {
-      await ref.read(inventarioApiProvider).eliminar(_asset!.assetTag);
-      ref.invalidate(inventarioListProvider);
-      if (mounted) context.pop();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  // MEJORADO: Ahora acepta URL relativa y funciona en web/móvil
   void _showImageDialog(BuildContext context, String imageUrl) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
-            Positioned(
-              top: 0, right: 0,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                onPressed: () => Navigator.of(ctx).pop(),
-              ),
-            ),
-          ],
-        ),
+        backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16),
+        child: Stack(alignment: Alignment.center, children: [
+          InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
+          Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.black54), onPressed: () => Navigator.of(ctx).pop())),
+        ]),
       ),
     );
   }
@@ -137,8 +120,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF3F4F6),
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          title: Text(widget.assetTag),
+          backgroundColor: Colors.white, title: Text(widget.assetTag),
           actions: [
             IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () async {
               if (_asset != null) {
@@ -146,13 +128,37 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 _load();
               }
             }),
-            IconButton(icon: const Icon(Icons.delete_outline), onPressed: _asset != null ? _eliminarActivo : null),
+            IconButton(icon: const Icon(Icons.delete_outline), onPressed: _asset != null ? () async {
+              final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Eliminar activo'), content: Text('¿Borrar ${_asset!.assetTag}?'), actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+              ]));
+              if (ok == true) {
+                await ref.read(inventarioApiProvider).eliminar(_asset!.assetTag);
+                ref.invalidate(inventarioListProvider);
+                if (mounted) context.pop();
+              }
+            } : null),
           ],
           bottom: const TabBar(tabs: [Tab(text: 'Detalles'), Tab(text: 'Historial')]),
         ),
         body: _loading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Text(_error!)) : TabBarView(
           children: [
             ListView(padding: const EdgeInsets.all(24), children: [
+              if (_asset!.isDraft)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Colors.blue.shade50, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(12)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.blue),
+                      const SizedBox(width: 12),
+                      const Expanded(child: Text('Este equipo está guardado como Borrador. Aún no se ha finalizado el registro.', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500))),
+                      FilledButton(onPressed: _finalizarBorrador, child: const Text('Finalizar Registro')),
+                    ],
+                  ),
+                ),
               _galeriaFotos(),
               const SizedBox(height: 24),
               _card('Información', [
@@ -165,6 +171,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 _kv('Ubicación', _asset!.location ?? '—'),
                 _kv('Estado', _asset!.status ?? '—'),
                 _kv('Asignado a', _asset!.assignedTo ?? '—'),
+                _kv('Registrado', _asset!.createdAt.toString().substring(0, 16)),
               ]),
               if (_asset!.notes != null && _asset!.notes!.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -189,50 +196,27 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
   Widget _galeriaFotos() {
     final imgs = _asset!.images;
     return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
+      elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF6B7280), letterSpacing: 0.8))),
-                TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 18), label: const Text('Agregar')),
-              ],
-            ),
-            if (imgs.isEmpty)
-              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 13))))
-            else
-              SizedBox(
-                height: 140,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: imgs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) => Stack(
-                    children: [
-                      GestureDetector(
-                        onTap: () => _showImageDialog(context, imgs[i].url),
-                        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imgs[i].url, width: 180, height: 140, fit: BoxFit.cover)),
-                      ),
-                      Positioned(
-                        top: 6, right: 6,
-                        child: Material(
-                          color: Colors.redAccent,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: () => _eliminarImagen(imgs[i]),
-                            child: const Padding(padding: EdgeInsets.all(6), child: Icon(Icons.delete, size: 16, color: Colors.white)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            Row(children: [
+              const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF6B7280), letterSpacing: 0.8))),
+              TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 18), label: const Text('Agregar')),
+            ]),
+            if (imgs.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 13)))) else
+            SizedBox(
+              height: 140,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal, itemCount: imgs.length, separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (_, i) => Stack(children: [
+                  GestureDetector(onTap: () => _showImageDialog(context, imgs[i].url), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imgs[i].url, width: 180, height: 140, fit: BoxFit.cover))),
+                  Positioned(top: 6, right: 6, child: Material(color: Colors.redAccent, shape: const CircleBorder(), child: InkWell(customBorder: const CircleBorder(), onTap: () => _eliminarImagen(imgs[i]), child: const Padding(padding: EdgeInsets.all(6), child: Icon(Icons.delete, size: 16, color: Colors.white))))),
+                ]),
               ),
+            ),
           ],
         ),
       ),
@@ -240,9 +224,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
   }
 
   Widget _card(String title, List<Widget> children) => Card(
-    elevation: 0,
-    margin: const EdgeInsets.only(bottom: 16),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
+    elevation: 0, margin: const EdgeInsets.only(bottom: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
     child: Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
