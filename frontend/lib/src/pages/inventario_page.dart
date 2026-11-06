@@ -241,7 +241,14 @@ class _AssetsTable extends StatelessWidget {
                   GestureDetector(onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); }, child: AssetThumbnail(asset: a, size: 40)),
                   const SizedBox(width: 8), 
                   Text(a.assetTag, style: TextStyle(fontWeight: FontWeight.w600, color: a.isDraft ? Colors.grey : Colors.black)),
-                  if (a.isDraft) const Padding(padding: EdgeInsets.only(left: 8), child: Chip(label: Text('Borrador', style: TextStyle(fontSize: 10)), backgroundColor: Colors.grey[200], visualDensity: VisualDensity.compact))
+                  if (a.isDraft) Padding(
+                    padding: const EdgeInsets.only(left: 8), 
+                    child: Chip(
+                      label: const Text('Borrador', style: TextStyle(fontSize: 10)), 
+                      backgroundColor: Colors.grey.shade200, 
+                      visualDensity: VisualDensity.compact
+                    )
+                  )
                 ])),
                 DataCell(Text(a.createdAt.toString().substring(0, 10))),
                 DataCell(Text('${a.quantity} ${a.unit}')),
