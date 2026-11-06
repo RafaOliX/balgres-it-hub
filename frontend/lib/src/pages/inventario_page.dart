@@ -23,15 +23,19 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
   String _statusFilter = 'Todos';
 
   Future<void> _exportarExcel() async {
-    final url = Uri.parse('http://192.0.0.69:8091/api/inventario/export');
+    final url = Uri.parse('http://192.168.0.10:8091/api/inventario/export');
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _importarExcel() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+    );
     if (result != null && result.files.single.bytes != null) {
       try {
-        await ref.read(inventarioApiProvider).importarExcel(result.files.single);
+        await ref.read(inventarioApiProvider).importarExcel(result.files.single.bytes!);
         ref.invalidate(inventarioListProvider);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel importado correctamente')));
       } catch (e) {

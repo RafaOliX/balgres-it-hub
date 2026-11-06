@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
 
@@ -20,12 +19,6 @@ class InventarioApi {
           },
         ));
 
-    Future<String> getSiguienteTag(String category) async {
-    final r = await _dio.get<Map<String, dynamic>>('/inventario/siguiente-tag', queryParameters: {'category': category});
-    return r.data!['tag'] as String;
-  }
-
-
   Future<List<ItAsset>> listar() async {
     final r = await _dio.get<List<dynamic>>('/inventario/');
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
@@ -36,6 +29,11 @@ class InventarioApi {
     return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<String> getSiguienteTag(String category) async {
+    final r = await _dio.get<Map<String, dynamic>>('/inventario/siguiente-tag', queryParameters: {'category': category});
+    return r.data!['tag'] as String;
+  }
+
   Future<ItAsset> crear(ItAssetCreate payload) async {
     final r = await _dio.post<Map<String, dynamic>>('/inventario/', data: payload.toJson());
     return ItAsset.fromJson(r.data!);
@@ -44,7 +42,7 @@ class InventarioApi {
   Future<ItAsset> actualizar(String currentTag, {
     String? assetTag, String? category, String? brand, String? model,
     String? serialNumber, String? location, String? status, String? notes,
-    int? quantity, String? unit,
+    int? quantity, String? unit, String? assignedTo,
   }) async {
     final body = <String, dynamic>{
       if (assetTag != null) 'asset_tag': assetTag,
@@ -57,6 +55,7 @@ class InventarioApi {
       if (notes != null) 'notes': notes,
       if (quantity != null) 'quantity': quantity,
       if (unit != null) 'unit': unit,
+      if (assignedTo != null) 'assigned_to': assignedTo,
     };
     final r = await _dio.patch<Map<String, dynamic>>('/inventario/$currentTag', data: body);
     return ItAsset.fromJson(r.data!);
@@ -83,9 +82,9 @@ class InventarioApi {
 
   Future<void> eliminarImagen(String tag, int imageId) async => await _dio.delete<void>('/inventario/$tag/images/$imageId');
 
-  Future<void> importarExcel(PlatformFile file) async {
+  Future<void> importarExcel(Uint8List bytes) async {
     final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(file.bytes!, filename: file.name),
+      'file': MultipartFile.fromBytes(bytes, filename: 'import.xlsx'),
     });
     await _dio.post('/inventario/import', data: form, options: Options(contentType: 'multipart/form-data'));
   }
