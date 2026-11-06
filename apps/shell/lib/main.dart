@@ -17,7 +17,7 @@ const _apiBase = String.fromEnvironment(
 );
 
 // CORREGIDO AQUÍ: Sin el \; al final
-final String _hostBase = kIsWeb ? '' : 'http://192.168.0.10:8091'\;
+final String _hostBase = kIsWeb ? '' : 'http://192.168.0.10:8091';
 
 void main() => runApp(const BalgresItApp());
 
