@@ -1,7 +1,7 @@
 """Schemas Pydantic del módulo inventario."""
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
@@ -41,11 +41,19 @@ class ItAssetCreate(BaseModel):
     model: str = Field(max_length=128)
     serial_number: Optional[str] = None
     location: Optional[str] = None
-    status: Optional[str] = "Operativo"
+    status: Optional[str] = "Borrador"
     notes: Optional[str] = None
     quantity: Optional[int] = 1
     unit: Optional[str] = "Unidad"
     assigned_to: Optional[str] = None
+
+    # Convertir S/N vacío a None
+    @field_validator('serial_number', 'location', 'notes', 'assigned_to')
+    @classmethod
+    def empty_to_none(cls, v: str | None) -> str | None:
+        if v is not None and v.strip() == "":
+            return None
+        return v
 
 class ItAssetUpdate(BaseModel):
     asset_tag: Optional[str] = Field(default=None, min_length=1, max_length=64)
@@ -60,6 +68,13 @@ class ItAssetUpdate(BaseModel):
     quantity: Optional[int] = None
     unit: Optional[str] = None
     assigned_to: Optional[str] = None
+
+    @field_validator('serial_number', 'location', 'notes', 'assigned_to')
+    @classmethod
+    def empty_to_none(cls, v: str | None) -> str | None:
+        if v is not None and v.strip() == "":
+            return None
+        return v
 
 class ItAssetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

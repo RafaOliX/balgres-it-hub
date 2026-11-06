@@ -14,29 +14,57 @@ class AssetFormPage extends ConsumerStatefulWidget {
 
 class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _form = GlobalKey<FormState>();
-  final _tag = TextEditingController();
-  final _brand = TextEditingController();
-  final _model = TextEditingController();
-  final _serial = TextEditingController();
-  final _location = TextEditingController();
-  final _assignedTo = TextEditingController();
-  final _notes = TextEditingController();
-  final _quantity = TextEditingController(text: '1');
+  late TextEditingController _tag;
+  late TextEditingController _brand;
+  late TextEditingController _model;
+  late TextEditingController _serial;
+  late TextEditingController _location;
+  late TextEditingController _assignedTo;
+  late TextEditingController _notes;
+  late TextEditingController _quantity;
   
   Category? _selectedCategory;
-  String _unit = 'Unidad';
-  String _status = 'Borrador';
+  late String _unit;
+  late String _status;
   final List<XFile> _files = [];
   bool _saving = false;
   bool _cargandoTag = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    // Recuperar el borrador si existía
+    final draft = ref.read(assetDraftProvider);
+    _tag = TextEditingController(text: draft.tag);
+    _brand = TextEditingController(text: draft.brand);
+    _model = TextEditingController(text: draft.model);
+    _serial = TextEditingController(text: draft.serial);
+    _location = TextEditingController(text: draft.location);
+    _assignedTo = TextEditingController(text: draft.assignedTo);
+    _notes = TextEditingController(text: draft.notes);
+    _quantity = TextEditingController(text: draft.quantity);
+    _unit = draft.unit;
+    _status = draft.status;
+  }
+
+  void _guardarBorrador() {
+    ref.read(assetDraftProvider.notifier).state = AssetDraft(
+      tag: _tag.text, brand: _brand.text, model: _model.text, serial: _serial.text,
+      location: _location.text, assignedTo: _assignedTo.text, notes: _notes.text,
+      quantity: _quantity.text, unit: _unit, status: _status,
+      categoryId: _selectedCategory?.id, categoryName: _selectedCategory?.name ?? ''
+    );
+  }
+
   Future<void> _onCategorySelected(Category? cat) async {
     if (cat == null) return;
     setState(() { _selectedCategory = cat; _unit = cat.unit; _cargandoTag = true; });
+    _guardarBorrador();
     try {
       final nextTag = await ref.read(inventarioApiProvider).getSiguienteTag(cat.id);
       setState(() => _tag.text = nextTag);
+      _guardarBorrador();
     } catch (e) {
       setState(() => _tag.text = '');
     } finally {
@@ -100,19 +128,14 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     );
   }
 
-  // ARREGLO DE LA CÁMARA: Ahora solo llama a pickImage una vez
   Future<void> _pickImages(ImageSource source) async {
     final picker = ImagePicker();
     if (source == ImageSource.camera) {
       final XFile? photo = await picker.pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 85);
-      if (photo != null) {
-        setState(() => _files.add(photo));
-      }
+      if (photo != null) setState(() => _files.add(photo));
     } else {
       final List<XFile> photos = await picker.pickMultiImage(maxWidth: 1600, imageQuality: 85);
-      if (photos.isNotEmpty) {
-        setState(() => _files.addAll(photos));
-      }
+      if (photos.isNotEmpty) setState(() => _files.addAll(photos));
     }
   }
 
@@ -128,10 +151,19 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, assignedTo: _assignedTo.text.trim(),
       ));
       if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
+      
+      // Limpiar el borrador porque ya se guardó con éxito
+      ref.read(assetDraftProvider.notifier).state = AssetDraft();
+      
       ref.invalidate(inventarioListProvider);
       if (mounted) context.pop();
     } catch (e) {
-      setState(() => _error = '$e');
+      // Manejo amigable del error 409
+      String errorMsg = '$e';
+      if (errorMsg.contains('409')) {
+        errorMsg = 'El Asset Tag o el Número de Serie ya existen. Por favor, revisa los datos.';
+      }
+      setState(() => _error = errorMsg);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -139,16 +171,16 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
   Widget _section(String title, List<Widget> children) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 24), // Más espacio entre tarjetas
+      margin: const EdgeInsets.only(bottom: 24),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
       child: Padding(
-        padding: const EdgeInsets.all(24), // Más padding interno
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8)),
-            const SizedBox(height: 20), // Espacio debajo del título
+            const SizedBox(height: 20),
             ...children,
           ],
         ),
@@ -162,7 +194,17 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
-      appBar: AppBar(title: const Text('Nuevo activo'), backgroundColor: Colors.white, elevation: 0.5),
+      appBar: AppBar(
+        title: const Text('Nuevo activo'), 
+        backgroundColor: Colors.white, elevation: 0.5,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            _guardarBorrador(); // Guarda al salir
+            context.pop();
+          },
+        ),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),
@@ -171,7 +213,21 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+                if (_error != null) 
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16), 
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500))),
+                        ],
+                      ),
+                    )
+                  ),
                 
                 _section('Fotografía', [
                   GestureDetector(
@@ -227,7 +283,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                       IconButton.filledTonal(onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear nueva'),
                     ],
                   ),
-                  const SizedBox(height: 16), // Espacio entre campos
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _tag, readOnly: true,
                     decoration: InputDecoration(
