@@ -40,6 +40,30 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
     }
   }
 
+  void _showImageDialog(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
+            Positioned(
+              top: 0, right: 0,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                onPressed: () => Navigator.of(ctx).pop(), // Cierra el dialog, no la pantalla
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(inventarioListProvider);
@@ -52,6 +76,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
         title: const Text('Inventario', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         actions: [
+          IconButton(icon: const Icon(Icons.category_outlined), onPressed: () => context.push('/categorias'), tooltip: 'Categorías'),
           PopupMenuButton<String>(
             onSelected: (val) { if (val == 'export') _exportarExcel(); if (val == 'import') _importarExcel(); },
             itemBuilder: (_) => [
@@ -80,6 +105,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
                       current: _statusFilter, onChanged: (s) => setState(() => _statusFilter = s),
                       counts: {
                         'Todos': items.length,
+                        'Borrador': items.where((a) => a.status == 'Borrador').length,
                         'Operativo': items.where((a) => a.status == 'Operativo').length,
                         'En Revisión': items.where((a) => a.status == 'En Revisión').length,
                         'Retirado': items.where((a) => a.status == 'Retirado').length,
@@ -89,7 +115,9 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
                       child: filtered.isEmpty
                           ? const Center(child: Text('Inventario vacío'))
                           : LayoutBuilder(builder: (context, c) {
-                              return c.maxWidth >= 900 ? _AssetsTable(assets: filtered) : _AssetsList(assets: filtered);
+                              return c.maxWidth >= 900 
+                                ? _AssetsTable(assets: filtered, onImageTap: (url) => _showImageDialog(context, url)) 
+                                : _AssetsList(assets: filtered);
                             }),
                     ),
                   ],
@@ -118,7 +146,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, isMobile ? 10 : 24, isMobile ? 16 : 24, 16),
-      color: Colors.white, // Fondo blanco para el header
+      color: Colors.white,
       child: Column(
         children: [
           if (!isMobile)
@@ -130,6 +158,8 @@ class _Header extends StatelessWidget {
                     Text('Activos de TI', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   ]),
                 ),
+                OutlinedButton.icon(onPressed: () => context.push('/categorias'), icon: const Icon(Icons.category_outlined, size: 18), label: const Text('Categorías')),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(onPressed: onImport, icon: const Icon(Icons.upload_file, size: 18), label: const Text('Importar')),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(onPressed: onExport, icon: const Icon(Icons.download, size: 18), label: const Text('Exportar')),
@@ -201,7 +231,8 @@ class _StatusFilters extends StatelessWidget {
 
 class _AssetsTable extends StatelessWidget {
   final List<ItAsset> assets;
-  const _AssetsTable({required this.assets});
+  final Function(String) onImageTap;
+  const _AssetsTable({required this.assets, required this.onImageTap});
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -221,24 +252,7 @@ class _AssetsTable extends StatelessWidget {
               cells: [
                 DataCell(Row(children: [
                   GestureDetector(
-                    onTap: () {
-                      if (a.imageUrl != null) {
-                        showDialog(
-                          context: context,
-                          builder: (_) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            insetPadding: const EdgeInsets.all(16),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                InteractiveViewer(child: Image.network(a.imageUrl!, fit: BoxFit.contain)),
-                                Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.black54), onPressed: () => Navigator.pop(context))),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                    },
+                    onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); },
                     child: AssetThumbnail(asset: a, size: 40),
                   ),
                   const SizedBox(width: 8), 
@@ -260,7 +274,7 @@ class _AssetsTable extends StatelessWidget {
       ),
     );
   }
-  Color _statusColor(String? s) => switch (s) { 'Operativo' => Colors.green, 'En Revisión' => Colors.orange, 'Retirado' => Colors.red, _ => Colors.grey };
+  Color _statusColor(String? s) => switch (s) { 'Borrador' => Colors.blueGrey, 'Operativo' => Colors.green, 'En Revisión' => Colors.orange, 'Retirado' => Colors.red, _ => Colors.grey };
 }
 
 class _AssetsList extends StatelessWidget {

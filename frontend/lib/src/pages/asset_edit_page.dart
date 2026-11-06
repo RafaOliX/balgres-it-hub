@@ -30,7 +30,7 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
     _notes = TextEditingController(text: widget.asset.notes);
     _quantity = TextEditingController(text: widget.asset.quantity.toString());
     _assignedTo = TextEditingController(text: widget.asset.assignedTo);
-    _status = widget.asset.status ?? 'Operativo';
+    _status = widget.asset.status ?? 'Borrador';
     _unit = widget.asset.unit;
   }
 
@@ -38,7 +38,6 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      // AHORA PASAMOS UN MAPA (Como pide el nuevo método actualizar)
       await ref.read(inventarioApiProvider).actualizar(widget.asset.assetTag, {
         'asset_tag': _tag.text.trim(),
         'category': _category.text.trim(),
@@ -70,32 +69,33 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextFormField(controller: _tag, decoration: const InputDecoration(labelText: 'Asset Tag *'), validator: (v) => v!.isEmpty ? 'Requerido' : null),
-            TextFormField(controller: _category, decoration: const InputDecoration(labelText: 'Categoría *'), validator: (v) => v!.isEmpty ? 'Requerido' : null),
+            TextFormField(controller: _tag, decoration: const InputDecoration(labelText: 'Asset Tag *', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Requerido' : null),
+            TextFormField(controller: _category, decoration: const InputDecoration(labelText: 'Categoría *', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Requerido' : null),
             Row(children: [
-              Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
+              Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca', border: OutlineInputBorder()))),
               const SizedBox(width: 10),
-              Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
+              Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()))),
             ]),
-            TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N (Opcional)')),
+            TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N (Opcional)', border: OutlineInputBorder())),
             Row(children: [
-              Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
+              Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad', border: OutlineInputBorder()))),
               const SizedBox(width: 10),
-              Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))),
+              Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()), child: Text(_unit))),
             ]),
-            TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)')),
-            TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física')),
+            TextFormField(controller: _assignedTo, decoration: const InputDecoration(labelText: 'Asignado a (Responsable)', border: OutlineInputBorder())),
+            TextFormField(controller: _location, decoration: const InputDecoration(labelText: 'Ubicación Física', border: OutlineInputBorder())),
             DropdownButtonFormField<String>(
               value: _status,
-              decoration: const InputDecoration(labelText: 'Estado'),
+              decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
               items: const [
+                DropdownMenuItem(value: 'Borrador', child: Text('Borrador')),
                 DropdownMenuItem(value: 'Operativo', child: Text('Operativo')),
                 DropdownMenuItem(value: 'En Revisión', child: Text('En Revisión')),
                 DropdownMenuItem(value: 'Retirado', child: Text('Retirado')),
               ],
               onChanged: (v) => setState(() => _status = v!),
             ),
-            TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 3),
+            TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _saving ? null : _submit,

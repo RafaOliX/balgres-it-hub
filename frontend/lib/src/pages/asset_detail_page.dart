@@ -65,6 +65,15 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
   }
 
   Future<void> _eliminarImagen(ItAssetImage img) async {
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Eliminar foto'),
+      content: const Text('¿Borrar esta foto del activo?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+      ],
+    ));
+    if (ok != true) return;
     try {
       await ref.read(inventarioApiProvider).eliminarImagen(_asset!.assetTag, img.id);
       _load();
@@ -93,12 +102,36 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     }
   }
 
+  void _showImageDialog(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
+            Positioned(
+              top: 0, right: 0,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: const Color(0xFFFAFAFA),
+        backgroundColor: const Color(0xFFF3F4F6),
         appBar: AppBar(
           backgroundColor: Colors.white,
           title: Text(widget.assetTag),
@@ -125,7 +158,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 _kv('Categoría', _asset!.category),
                 _kv('Marca', _asset!.brand),
                 _kv('Modelo', _asset!.model),
-                _kv('S/N', _asset!.serialNumber ?? 'N/A'), // ARREGLADO AQUÍ
+                _kv('S/N', _asset!.serialNumber ?? 'N/A'),
                 _kv('Ubicación', _asset!.location ?? '—'),
                 _kv('Estado', _asset!.status ?? '—'),
                 _kv('Asignado a', _asset!.assignedTo ?? '—'),
@@ -150,7 +183,6 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     );
   }
 
-  // NUEVA GALERÍA HORIZONTAL (Carrusel)
   Widget _galeriaFotos() {
     final imgs = _asset!.images;
     return Container(
@@ -179,19 +211,22 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, i) => Stack(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(imgs[i].url, width: 160, height: 120, fit: BoxFit.cover),
+                    GestureDetector(
+                      onTap: () => _showImageDialog(context, imgs[i].url),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(imgs[i].url, width: 160, height: 120, fit: BoxFit.cover),
+                      ),
                     ),
                     Positioned(
                       top: 4, right: 4,
                       child: Material(
-                        color: Colors.black54,
+                        color: Colors.redAccent, // Botón de borrar claro
                         shape: const CircleBorder(),
                         child: InkWell(
                           customBorder: const CircleBorder(),
                           onTap: () => _eliminarImagen(imgs[i]),
-                          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 14, color: Colors.white)),
+                          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.delete, size: 14, color: Colors.white)),
                         ),
                       ),
                     ),

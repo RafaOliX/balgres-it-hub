@@ -229,7 +229,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _status, decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
-                    items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    items: ['Borrador', 'Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (v) => setState(() => _status = v!),
                   ),
                   const SizedBox(height: 12),
