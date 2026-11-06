@@ -468,3 +468,29 @@ Commits con prefijo entre corchetes: `[inventario] ...`, `[deploy] ...`,
 `[hub] ...`.
 
 ---
+
+
+
+Sistema centralizado de gestión de activos (Inventario) para el departamento de IT de Balgres. 
+Construido con **Flutter (Web/Android)**, **FastAPI (Python)** y **PostgreSQL**, orquestado con **Docker Compose**.
+
+## Arquitectura
+
+- **`apps/core-api`**: Backend principal en FastAPI.
+- **`apps/shell`**: Interfaz Flutter (Web y Android).
+- **`modules/inventario`**: Submódulo con la lógica del inventario (Backend + Frontend).
+- **`docker/`**: Archivos de orquestación y despliegue.
+
+---
+
+## 🚀 Quickstart (Montar en una PC nueva)
+
+### Requisitos previos
+- Sistema operativo: Linux o WSL2 (Windows).
+- Tener instalado: `git`, `docker`, `docker-compose`.
+- *(Opcional)* Para compilar el APK: `docker` (se compila dentro de un contenedor).
+
+### Instalación en 3 pasos
+
+**1. Clonar el repositorio CON sus submódulos:**
+```bash
