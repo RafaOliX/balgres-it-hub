@@ -250,7 +250,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
           child: Form(
             key: _form,
             child: ListView(padding: const EdgeInsets.all(24), children: [
-              if (_selectedCategory?.requiresSn == true || _selectedCategory == null) FormSection('Fotografía', [
+              FormSection('Fotografía', [
                 GestureDetector(
                   onTap: () => showModalBottomSheet(
                     context: context,

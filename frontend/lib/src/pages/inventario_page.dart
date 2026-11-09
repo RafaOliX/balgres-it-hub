@@ -214,6 +214,11 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
               backgroundColor: Colors.white,
               actions: [
                 IconButton(
+                  icon: const Icon(Icons.category_outlined),
+                  tooltip: 'Categorías',
+                  onPressed: () => context.push('/categorias'),
+                ),
+                IconButton(
                   icon: Badge(isLabelVisible: filter.isActive, child: const Icon(Icons.filter_list)),
                   tooltip: 'Filtros',
                   onPressed: () => _showFiltersModal(context, ref),
@@ -338,6 +343,14 @@ class _HeaderState extends ConsumerState<_Header> {
               ]),
             ),
             
+            // BOTÓN DE CATEGORÍAS
+            OutlinedButton.icon(
+              onPressed: () => context.push('/categorias'),
+              icon: const Icon(Icons.category_outlined, size: 18),
+              label: const Text('Categorías'),
+            ),
+            const SizedBox(width: 8),
+
             // BOTÓN DE FILTROS
             OutlinedButton.icon(
               onPressed: widget.onShowFilters,
