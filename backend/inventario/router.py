@@ -399,6 +399,17 @@ def listar(
 
 @router.post("/", response_model=ItAssetRead, status_code=201)
 def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user: str = Depends(current_user)):
+    # Si ya existe un borrador con ese tag, lo actualizamos (upsert)
+    existente = session.exec(select(ItAsset).where(ItAsset.asset_tag == payload.asset_tag)).first()
+    if existente and existente.is_draft:
+        for k, v in payload.model_dump(exclude_unset=True).items():
+            setattr(existente, k, v)
+        existente.is_draft = False
+        session.add(existente)
+        session.commit()
+        session.refresh(existente)
+        return existente
+
     asset = ItAsset(**payload.model_dump())
     if asset.quantity is None:
         asset.quantity = 1
