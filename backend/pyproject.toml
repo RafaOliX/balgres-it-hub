@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=2.2.2",
     "openpyxl>=3.1.2",
     "fpdf2>=2.7.9",
+    "segno>=1.6",
 ]
 
 [tool.setuptools.packages.find]

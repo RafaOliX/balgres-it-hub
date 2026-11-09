@@ -16,6 +16,7 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
   Future<void> _showCategoryModal(BuildContext context, WidgetRef ref, {Category? category}) async {
     final nameCtrl = TextEditingController(text: category?.name ?? '');
     final prefixCtrl = TextEditingController(text: category?.prefix ?? '');
+    final specCtrl = TextEditingController(text: (category?.specFields ?? const <String>[]).join(', '));
     String unit = category?.unit ?? 'Unidad';
     bool reqSn = category?.requiresSn ?? true;
     int? parentId = category?.parentId;
@@ -34,6 +35,8 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
                   TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
                   const SizedBox(height: 12),
                   TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+                  const SizedBox(height: 12),
+                  TextField(controller: specCtrl, decoration: const InputDecoration(labelText: 'Campos técnicos (separados por coma)', hintText: 'CPU, RAM, Disco, IP, MAC', border: OutlineInputBorder())),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: unit, decoration: const InputDecoration(labelText: 'Unidad por defecto', border: OutlineInputBorder()),
@@ -66,7 +69,7 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
               FilledButton(
                 onPressed: () async {
                   if (nameCtrl.text.isEmpty || prefixCtrl.text.isEmpty) return;
-                  final newCat = Category(id: category?.id ?? 0, name: nameCtrl.text, prefix: prefixCtrl.text, unit: unit, requiresSn: reqSn, parentId: parentId);
+                  final newCat = Category(id: category?.id ?? 0, name: nameCtrl.text, prefix: prefixCtrl.text, unit: unit, requiresSn: reqSn, parentId: parentId, specFields: specCtrl.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList());
                   try {
                     if (category == null) {
                       await ref.read(inventarioApiProvider).crearCategoria(newCat);

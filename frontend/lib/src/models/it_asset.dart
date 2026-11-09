@@ -1,3 +1,5 @@
+String? dateToApi(DateTime? d) => d == null ? null : d.toIso8601String().substring(0, 10);
+
 class ItAssetImage {
   final int id;
   final String filename;
@@ -15,40 +17,62 @@ class ItAsset {
   final String model;
   final String? serialNumber;
   final String? location;
+  final int? locationId;
   final String? status;
   final String? notes;
   final List<ItAssetImage> images;
   final int quantity;
   final String unit;
   final String? assignedTo;
+  final int? employeeId;
   final DateTime createdAt;
   final bool isDraft;
+  final DateTime? purchaseDate;
+  final double? cost;
+  final String? supplier;
+  final String? invoiceNumber;
+  final DateTime? warrantyUntil;
+  final Map<String, String> specs;
+  final DateTime? deletedAt;
 
   const ItAsset({
     required this.id, required this.assetTag, required this.category, this.categoryId,
-    required this.brand, required this.model, this.serialNumber, this.location, this.status, this.notes,
-    this.images = const [], this.quantity = 1, this.unit = 'Unidad', this.assignedTo,
-    required this.createdAt, this.isDraft = false,
+    required this.brand, required this.model, this.serialNumber, this.location, this.locationId,
+    this.status, this.notes, this.images = const [], this.quantity = 1, this.unit = 'Unidad',
+    this.assignedTo, this.employeeId, required this.createdAt, this.isDraft = false,
+    this.purchaseDate, this.cost, this.supplier, this.invoiceNumber, this.warrantyUntil,
+    this.specs = const {}, this.deletedAt,
   });
 
+  static DateTime? _d(dynamic v) => v == null ? null : DateTime.tryParse(v as String);
+
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
-    id: j['id'] as int,
-    assetTag: j['asset_tag'] as String,
-    category: j['category'] as String,
-    categoryId: j['category_id'] as int?,
-    brand: j['brand'] as String,
-    model: j['model'] as String,
-    serialNumber: j['serial_number'] as String?,
-    location: j['location'] as String?,
-    status: j['status'] as String?,
-    notes: j['notes'] as String?,
-    quantity: j['quantity'] as int? ?? 1,
-    unit: j['unit'] as String? ?? 'Unidad',
-    assignedTo: j['assigned_to'] as String?,
-    createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
-    isDraft: j['is_draft'] as bool? ?? false,
-    images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
-  );
+        id: j['id'] as int,
+        assetTag: j['asset_tag'] as String,
+        category: j['category'] as String,
+        categoryId: j['category_id'] as int?,
+        brand: j['brand'] as String,
+        model: j['model'] as String,
+        serialNumber: j['serial_number'] as String?,
+        location: j['location'] as String?,
+        locationId: j['location_id'] as int?,
+        status: j['status'] as String?,
+        notes: j['notes'] as String?,
+        quantity: j['quantity'] as int? ?? 1,
+        unit: j['unit'] as String? ?? 'Unidad',
+        assignedTo: j['assigned_to'] as String?,
+        employeeId: j['employee_id'] as int?,
+        createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
+        isDraft: j['is_draft'] as bool? ?? false,
+        images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
+        purchaseDate: _d(j['purchase_date']),
+        cost: (j['cost'] as num?)?.toDouble(),
+        supplier: j['supplier'] as String?,
+        invoiceNumber: j['invoice_number'] as String?,
+        warrantyUntil: _d(j['warranty_until']),
+        specs: ((j['specs'] as Map<String, dynamic>?) ?? {}).map((k, v) => MapEntry(k, v?.toString() ?? '')),
+        deletedAt: j['deleted_at'] == null ? null : DateTime.parse(j['deleted_at'] as String).toLocal(),
+      );
 
   String? get imageUrl => images.isNotEmpty ? images.first.url : null;
 }
@@ -60,30 +84,41 @@ class ItAssetCreate {
   final String brand;
   final String model;
   final String? serialNumber;
-  final String? location;
+  final int? locationId;
   final String? status;
   final String? notes;
   final int quantity;
   final String unit;
-  final String? assignedTo;
   final bool isDraft;
+  final DateTime? purchaseDate;
+  final double? cost;
+  final String? supplier;
+  final String? invoiceNumber;
+  final DateTime? warrantyUntil;
+  final Map<String, String> specs;
 
   ItAssetCreate({
     required this.assetTag, required this.category, this.categoryId,
-    required this.brand, required this.model, this.serialNumber, this.location,
-    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.assignedTo, this.isDraft = false,
+    required this.brand, required this.model, this.serialNumber, this.locationId,
+    this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.isDraft = false,
+    this.purchaseDate, this.cost, this.supplier, this.invoiceNumber, this.warrantyUntil,
+    this.specs = const {},
   });
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'asset_tag': assetTag, 'category': category, 'category_id': categoryId,
       'brand': brand, 'model': model, 'quantity': quantity, 'unit': unit, 'is_draft': isDraft,
+      'location_id': locationId, 'specs': specs.isEmpty ? null : specs,
     };
     if (serialNumber != null && serialNumber!.trim().isNotEmpty) map['serial_number'] = serialNumber;
-    if (location != null && location!.trim().isNotEmpty) map['location'] = location;
     if (status != null && status!.isNotEmpty) map['status'] = status;
     if (notes != null && notes!.trim().isNotEmpty) map['notes'] = notes;
-    if (assignedTo != null && assignedTo!.trim().isNotEmpty) map['assigned_to'] = assignedTo;
+    if (purchaseDate != null) map['purchase_date'] = dateToApi(purchaseDate);
+    if (cost != null) map['cost'] = cost;
+    if (supplier != null && supplier!.trim().isNotEmpty) map['supplier'] = supplier;
+    if (invoiceNumber != null && invoiceNumber!.trim().isNotEmpty) map['invoice_number'] = invoiceNumber;
+    if (warrantyUntil != null) map['warranty_until'] = dateToApi(warrantyUntil);
     return map;
   }
 }
