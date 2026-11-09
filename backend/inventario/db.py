@@ -75,7 +75,10 @@ def apply_migrations() -> None:
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_it_assets_deleted_at ON it_assets(deleted_at);"))
         # Asegurar que NO haya índice único en el S/N
+        # Asegurar que el S/N acepta Nulos y no tiene índice único
+        conn.execute(text("ALTER TABLE it_assets ALTER COLUMN serial_number DROP NOT NULL;"))
         conn.execute(text("ALTER TABLE it_assets DROP CONSTRAINT IF EXISTS it_assets_serial_number_key;"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_it_assets_serial_number;"))
         conn.execute(text("DROP INDEX IF EXISTS ix_it_assets_serial_number;"))
 
     # Cascada en imágenes (transacción aparte: si falla no contamina las demás)
