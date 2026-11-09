@@ -415,9 +415,13 @@ def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user:
         session.commit()
     except IntegrityError as e:
         session.rollback()
-        if "asset_tag" in str(e.orig).lower():
+        error_msg = str(e.orig).lower()
+        if "asset_tag" in error_msg:
             raise HTTPException(409, detail="El Asset Tag ya existe. Por favor, cambia el Tag o selecciona otra categoría.")
-        raise HTTPException(409, detail="Error de integridad en la base de datos. Revisa los datos.")
+        elif "serial_number" in error_msg:
+            raise HTTPException(409, detail="El Número de Serie (S/N) ya existe en otro equipo. Si no tiene S/N, déjalo en blanco.")
+        else:
+            raise HTTPException(409, detail=f"Error de integridad en la base de datos: {str(e.orig)}")
     session.refresh(asset)
     session.add(ItAssetHistory(
         asset_id=asset.id, field_name="registro", changed_by=user,
@@ -464,9 +468,15 @@ def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depend
     session.add(asset)
     try:
         session.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         session.rollback()
-        raise HTTPException(409, detail="El nuevo Tag ya existe en otro activo")
+        error_msg = str(e.orig).lower()
+        if "asset_tag" in error_msg:
+            raise HTTPException(409, detail="El nuevo Tag ya existe en otro activo.")
+        elif "serial_number" in error_msg:
+            raise HTTPException(409, detail="El nuevo S/N ya existe en otro activo.")
+        else:
+            raise HTTPException(409, detail=f"Error de integridad: {str(e.orig)}")
     session.refresh(asset)
     return asset
 
