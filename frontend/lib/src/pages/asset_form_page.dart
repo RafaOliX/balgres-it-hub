@@ -250,7 +250,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
           child: Form(
             key: _form,
             child: ListView(padding: const EdgeInsets.all(24), children: [
-              FormSection('Fotografía', [
+              if (_selectedCategory?.requiresSn == true || _selectedCategory == null) FormSection('Fotografía', [
                 GestureDetector(
                   onTap: () => showModalBottomSheet(
                     context: context,
@@ -318,11 +318,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   const SizedBox(width: 8),
                   IconButton.filledTonal(onPressed: _generarNuevoTag, icon: const Icon(Icons.refresh), tooltip: 'Regenerar Tag'),
                 ]),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _serial,
-                  decoration: InputDecoration(labelText: _selectedCategory?.requiresSn == true ? 'N/S *' : 'N/S (Opcional)', border: const OutlineInputBorder()),
-                ),
+                if (_selectedCategory?.requiresSn == true) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _serial,
+                    decoration: const InputDecoration(labelText: 'N/S *', border: OutlineInputBorder()),
+                  ),
+                ],
               ]),
               FormSection('Detalles del equipo', [
                 Row(children: [

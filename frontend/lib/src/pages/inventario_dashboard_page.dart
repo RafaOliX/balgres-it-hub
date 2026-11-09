@@ -5,8 +5,8 @@ import '../data/providers.dart';
 
 const _border = Color(0xFFE5E7EB);
 
-class DashboardPage extends ConsumerWidget {
-  const DashboardPage({super.key});
+class InventarioDashboardPage extends ConsumerWidget {
+  const InventarioDashboardPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

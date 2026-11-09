@@ -294,7 +294,39 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       const SizedBox(height: 24),
       _card('Información', [
         _kv('Tag', a.assetTag),
-        _kv('Cantidad', '${a.quantity} ${a.unit}'),
+        _kvWidget('Cantidad', Row(
+          children: [
+            Text('${a.quantity} ${a.unit}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(width: 12),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: 'Restar 1 (Usar)',
+              onPressed: () async {
+                try {
+                  await ref.read(inventarioApiProvider).ajustarStock(a.assetTag, -1);
+                  _load();
+                  _snack('Se restó 1 unidad', color: Colors.orange);
+                } catch (e) { _snack('Error: ${apiError(e)}'); }
+              },
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: 'Sumar 1 (Ingreso)',
+              onPressed: () async {
+                try {
+                  await ref.read(inventarioApiProvider).ajustarStock(a.assetTag, 1);
+                  _load();
+                  _snack('Se agregó 1 unidad', color: Colors.green);
+                } catch (e) { _snack('Error: ${apiError(e)}'); }
+              },
+            ),
+          ],
+        )),
         _kv('Categoría', a.category),
         _kv('Marca', a.brand),
         _kv('Modelo', a.model),
@@ -442,6 +474,14 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
         child: Row(children: [
           SizedBox(width: 100, child: Text(k, style: const TextStyle(fontSize: 13, color: Colors.grey))),
           Expanded(child: Text(v, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+        ]),
+      );
+
+  Widget _kvWidget(String k, Widget v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          SizedBox(width: 100, child: Text(k, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+          Expanded(child: v),
         ]),
       );
 }

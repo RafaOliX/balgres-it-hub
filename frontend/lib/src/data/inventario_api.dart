@@ -89,6 +89,10 @@ class InventarioApi {
 
   Future<void> eliminar(String tag) async => await _dio.delete<void>('/inventario/$tag');
 
+  Future<void> ajustarStock(String tag, int amount) async {
+    await _dio.post('/inventario/$tag/adjust-stock', queryParameters: {'amount': amount});
+  }
+
   // ---- Imágenes
   Future<List<ItAssetImage>> subirImagenes(String tag, List<XFile> files) async {
     final parts = <MultipartFile>[];

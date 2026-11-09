@@ -5,7 +5,7 @@ export 'src/pages/asset_form_page.dart';
 export 'src/pages/asset_detail_page.dart';
 export 'src/pages/asset_edit_page.dart';
 export 'src/pages/categories_page.dart';
-export 'src/pages/dashboard_page.dart';
+export 'src/pages/inventario_dashboard_page.dart';
 export 'src/pages/catalogos_page.dart';
 export 'src/pages/papelera_page.dart';
 export 'src/data/inventario_api.dart';

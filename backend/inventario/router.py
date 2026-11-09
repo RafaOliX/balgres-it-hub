@@ -145,6 +145,20 @@ def _qr_png(text: str) -> BytesIO:
     buf.seek(0)
     return buf
 
+@router.post("/{asset_tag}/adjust-stock", response_model=ItAssetRead)
+def ajustar_stock(asset_tag: str, amount: int, session: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Suma o resta cantidad al stock (ej. usar un cable)."""
+    asset = _get_or_404(session, asset_tag)
+    nueva_cantidad = asset.quantity + amount
+    if nueva_cantidad < 0:
+        raise HTTPException(400, detail="El stock no puede ser negativo")
+    
+    _log_change(session, asset.id, "quantity", asset.quantity, nueva_cantidad, user)
+    asset.quantity = nueva_cantidad
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return asset
 
 # ==============================================================================
 # RUTAS FIJAS (DEBEN IR PRIMERO PARA EVITAR QUE /{asset_tag} LAS ATRAPE)
