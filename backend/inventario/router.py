@@ -399,16 +399,22 @@ def listar(
 
 @router.post("/", response_model=ItAssetRead, status_code=201)
 def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user: str = Depends(current_user)):
-    # Si ya existe un borrador con ese tag, lo actualizamos (upsert)
+    # Verificar si el Tag ya existe
     existente = session.exec(select(ItAsset).where(ItAsset.asset_tag == payload.asset_tag)).first()
-    if existente and existente.is_draft:
-        for k, v in payload.model_dump(exclude_unset=True).items():
-            setattr(existente, k, v)
-        existente.is_draft = False
-        session.add(existente)
-        session.commit()
-        session.refresh(existente)
-        return existente
+    if existente:
+        if existente.deleted_at is not None:
+            raise HTTPException(409, detail=f"El Tag '{payload.asset_tag}' está en la Papelera. Restáuralo o usa otro Tag.")
+        if existente.is_draft:
+            # Upsert: Convertir borrador en activo final
+            for k, v in payload.model_dump(exclude_unset=True).items():
+                setattr(existente, k, v)
+            existente.is_draft = False
+            session.add(existente)
+            session.commit()
+            session.refresh(existente)
+            return existente
+        else:
+            raise HTTPException(409, detail=f"El Tag '{payload.asset_tag}' ya está asignado a un activo final.")
 
     asset = ItAsset(**payload.model_dump())
     if asset.quantity is None:

@@ -82,7 +82,7 @@ class ItAsset(SQLModel, table=True):
 
     brand: str = Field(max_length=64)
     model: str = Field(max_length=128)
-    serial_number: Optional[str] = Field(default=None, index=True, max_length=128)
+    serial_number: Optional[str] = Field(default=None, max_length=128)
 
     location: Optional[str] = Field(default=None, max_length=256)  # texto derivado de location_id (o legado)
     location_id: Optional[int] = Field(default=None, foreign_key="locations.id")
