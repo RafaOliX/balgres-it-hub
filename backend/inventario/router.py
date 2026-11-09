@@ -417,6 +417,8 @@ def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user:
             raise HTTPException(409, detail=f"El Tag '{payload.asset_tag}' ya está asignado a un activo final.")
 
     asset = ItAsset(**payload.model_dump())
+    if asset.serial_number is not None and asset.serial_number.strip() == "":
+        asset.serial_number = None
     if asset.quantity is None:
         asset.quantity = 1
     if asset.category_id is not None:
@@ -472,6 +474,8 @@ def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depend
 
     was_draft = asset.is_draft
     for k, v in data.items():
+        if k == 'serial_number' and isinstance(v, str) and v.strip() == "":
+            v = None
         if v is None and k in NOT_NULL_FIELDS:
             continue
         if not was_draft:
