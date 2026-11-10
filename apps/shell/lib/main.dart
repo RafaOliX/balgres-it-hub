@@ -44,6 +44,16 @@ final _router = GoRouter(
           ],
         ),
         GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
+        GoRoute(
+          path: '/empleados',
+          builder: (_, __) => const EmpleadosPage(),
+          routes: [
+            GoRoute(
+              path: ':id',
+              builder: (_, state) => EmpleadoDetailPage(employeeId: int.parse(state.pathParameters['id']!)),
+            ),
+          ],
+        ),
       ],
     ),
   ],
@@ -66,7 +76,7 @@ class _BalgresItAppState extends State<BalgresItApp> {
     if (kIsWeb) return;
     try {
       final pkgInfo = await PackageInfo.fromPlatform();
-      final dio = Dio(BaseOptions(baseUrl: _hostBase)); 
+      final dio = Dio(BaseOptions(baseUrl: _hostBase));
       final r = await dio.get('/api/app/version');
       final latestVersion = r.data['version'];
       final apkUrl = r.data['apk_url'];
@@ -90,14 +100,27 @@ class _BalgresItAppState extends State<BalgresItApp> {
     return ProviderScope(
       overrides: [
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
-        appHostBaseProvider.overrideWithValue(_hostBase), 
+        appHostBaseProvider.overrideWithValue(_hostBase),
       ],
-      child: MaterialApp.router(
-        title: 'Balgres IT Hub',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        routerConfig: _router,
-      ),
+      child: const _ThemedApp(),
+    );
+  }
+}
+
+class _ThemedApp extends ConsumerWidget {
+  const _ThemedApp();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final accent = ref.watch(accentProvider);
+    return MaterialApp.router(
+      title: 'Balgres IT Hub',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(accent),
+      darkTheme: AppTheme.dark(accent),
+      themeMode: mode,
+      routerConfig: _router,
     );
   }
 }

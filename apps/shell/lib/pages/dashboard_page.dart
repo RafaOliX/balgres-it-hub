@@ -1,243 +1,184 @@
+import 'package:balgres_it_inventario/balgres_it_inventario.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/theme.dart';
+import '../core/brand.dart';
 
-class DashboardPage extends StatelessWidget {
+const _dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+const _meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+String _hoy() {
+  final n = DateTime.now();
+  return 'Hoy es ${_dias[n.weekday - 1]}, ${n.day} de ${_meses[n.month - 1]} de ${n.year}';
+}
+
+class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _PageHeader(
-            title: 'Dashboard',
-            subtitle: 'Resumen del departamento de IT',
-          ),
-          const SizedBox(height: 24),
-          const _StatsRow(),
-          const SizedBox(height: 32),
-          const Text('Módulos',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          _ModuleGrid(items: [
-            _ModuleItem(
-              icon: Icons.inventory_2_outlined,
-              color: AppColors.primary,
-              title: 'Inventario',
-              subtitle: 'Activos de TI',
-              onTap: () => context.go('/inventario'),
-            ),
-            const _ModuleItem(
-              icon: Icons.confirmation_number_outlined,
-              color: Color(0xFF0891B2),
-              title: 'Tickets',
-              subtitle: 'Próximamente',
-            ),
-            const _ModuleItem(
-              icon: Icons.vpn_key_outlined,
-              color: Color(0xFF7C3AED),
-              title: 'Licencias',
-              subtitle: 'Próximamente',
-            ),
-            const _ModuleItem(
-              icon: Icons.people_outline,
-              color: Color(0xFF059669),
-              title: 'Usuarios',
-              subtitle: 'Próximamente',
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.sw;
+    final async = ref.watch(dashboardProvider);
+    final mobile = MediaQuery.sizeOf(context).width < 900;
+
+    return ListView(padding: EdgeInsets.all(mobile ? 16 : 28), children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        if (mobile) ...[const BrandLogo(height: 38), const SizedBox(width: 12)],
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Hola, equipo de TI', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.1)),
+            const SizedBox(height: 4),
+            Text(_hoy(), style: TextStyle(fontSize: 13, color: c.muted)),
           ]),
-        ],
-      ),
-    );
-  }
-}
-
-class _PageHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  const _PageHeader({required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title,
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text(subtitle,
-            style: const TextStyle(
-                fontSize: 14, color: AppColors.textSecondary)),
-      ],
-    );
-  }
-}
-
-class _StatsRow extends StatelessWidget {
-  const _StatsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final wide = constraints.maxWidth > 700;
-      final cards = const [
-        _StatCard(label: 'Total activos', value: '—', icon: Icons.inventory, color: AppColors.primary),
-        _StatCard(label: 'Operativos', value: '—', icon: Icons.check_circle_outline, color: AppColors.success),
-        _StatCard(label: 'En revisión', value: '—', icon: Icons.build_outlined, color: AppColors.warning),
-        _StatCard(label: 'Retirados', value: '—', icon: Icons.archive_outlined, color: AppColors.danger),
-      ];
-      return wide
-          ? Row(
-              children: cards
-                  .map((c) => Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: c,
-                        ),
-                      ))
-                  .toList(),
-            )
-          : Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: cards
-                  .map((c) => SizedBox(width: (constraints.maxWidth - 12) / 2, child: c))
-                  .toList(),
-            );
-    });
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(label,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModuleGrid extends StatelessWidget {
-  final List<_ModuleItem> items;
-  const _ModuleGrid({required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final cross = constraints.maxWidth > 900 ? 3 : (constraints.maxWidth > 600 ? 2 : 1);
-      return GridView.count(
-        crossAxisCount: cross,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 2.6,
-        children: items,
-      );
-    });
-  }
-}
-
-class _ModuleItem extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-  const _ModuleItem({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-              if (onTap != null)
-                const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-            ],
-          ),
         ),
+        IconButton(icon: const Icon(Icons.refresh), tooltip: 'Recargar', onPressed: () => ref.invalidate(dashboardProvider)),
+        if (mobile) const ThemeToggleButton(),
+        if (!mobile) ...[
+          const SizedBox(width: 8),
+          FilledButton.icon(onPressed: () => context.go('/inventario'), icon: const Icon(Icons.add, size: 18), label: const Text('Ir al inventario')),
+        ],
+      ]),
+      const SizedBox(height: 24),
+      async.when(
+        loading: () => const SizedBox(height: 160, child: Center(child: CircularProgressIndicator())),
+        error: (e, _) => Row(children: [
+          Expanded(child: Text('No se pudo cargar: ${apiError(e)}', style: TextStyle(color: c.bad))),
+          OutlinedButton(onPressed: () => ref.invalidate(dashboardProvider), child: const Text('Reintentar')),
+        ]),
+        data: (d) => _Content(d: d, wide: !mobile),
+      ),
+    ]);
+  }
+}
+
+class _Content extends StatelessWidget {
+  final Map<String, dynamic> d;
+  final bool wide;
+  const _Content({required this.d, required this.wide});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sw;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final total = (d['total'] as num?)?.toInt() ?? 0;
+    final porEstado = Map<String, dynamic>.from(d['por_estado'] as Map? ?? {});
+    final porCat = Map<String, dynamic>.from(d['por_categoria'] as Map? ?? {});
+    int n(String k) => (porEstado[k] as num?)?.toInt() ?? 0;
+    double pr(int v) => total == 0 ? 0 : v / total;
+    String pct(int v) => '${(pr(v) * 100).round()}%';
+    final garantias = (d['garantias_por_vencer'] as List?) ?? [];
+    final vencidas = (d['garantias_vencidas'] as num?)?.toInt() ?? 0;
+    final costo = (d['costo_total'] as num?)?.toDouble() ?? 0;
+
+    final hero = <Widget>[
+      HeroCard(title: 'Operativos', value: '${n('Operativo')}', caption: pct(n('Operativo')), progress: pr(n('Operativo')), color: dark ? const Color(0xFF1B2A9E) : kBrandNavy, icon: Icons.check_circle_outline),
+      HeroCard(title: 'En revisión', value: '${n('En Revisión')}', caption: pct(n('En Revisión')), progress: pr(n('En Revisión')), color: kBrandCyan, icon: Icons.build_outlined),
+      HeroCard(title: 'Retirados', value: '${n('Retirado')}', caption: pct(n('Retirado')), progress: pr(n('Retirado')), color: kBrandCoral, icon: Icons.archive_outlined),
+    ];
+
+    final tiles = <Widget>[
+      KpiTile('Activos', '$total', icon: Icons.inventory_2_outlined),
+      KpiTile('Unidades', '${d['unidades_totales']}', icon: Icons.numbers, color: c.accent2),
+      KpiTile('Asignados', '${d['asignados']}', icon: Icons.person_outline, color: c.ok),
+      KpiTile('Sin asignar', '${d['sin_asignar']}', icon: Icons.person_off_outlined, color: c.warn),
+      KpiTile('Borradores', '${d['borradores']}', icon: Icons.edit_note, color: c.muted),
+      KpiTile('Costo total', '\$${costo.toStringAsFixed(0)}', icon: Icons.attach_money, color: c.ok),
+    ];
+
+    final maxCat = porCat.values.map((v) => (v as num).toInt()).fold<int>(1, (a, b) => b > a ? b : a);
+
+    final main = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      wide
+          ? Row(children: [for (var i = 0; i < hero.length; i++) ...[Expanded(child: hero[i]), if (i < hero.length - 1) const SizedBox(width: 18)]])
+          : Column(children: [for (final h in hero) Padding(padding: const EdgeInsets.only(bottom: 14), child: h)]),
+      const SizedBox(height: 28),
+      const SectionLabel('Estadísticas'),
+      const SizedBox(height: 12),
+      LayoutBuilder(builder: (context, cs) {
+        final cols = cs.maxWidth >= 640 ? 3 : 2;
+        final w = (cs.maxWidth - 14 * (cols - 1)) / cols;
+        return Wrap(spacing: 14, runSpacing: 14, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
+      }),
+      const SizedBox(height: 28),
+      SwissSection('Por categoría', [
+        if (porCat.isEmpty) Text('Sin datos', style: TextStyle(color: c.muted)),
+        for (final e in porCat.entries.take(8))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              SizedBox(width: 140, child: Text(e.key, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(value: (e.value as num).toInt() / maxCat, minHeight: 10, backgroundColor: c.panel, valueColor: AlwaysStoppedAnimation(c.accent)),
+                ),
+              ),
+              SizedBox(width: 44, child: Text('${e.value}', textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w700))),
+            ]),
+          ),
+      ]),
+    ]);
+
+    final side = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SwissSection('Garantías', [
+        Row(children: [
+          Expanded(child: Text(vencidas > 0 ? '$vencidas vencida(s)' : 'Sin garantías vencidas', style: TextStyle(fontWeight: FontWeight.w700, color: vencidas > 0 ? c.bad : c.ok))),
+        ]),
+        const SizedBox(height: 12),
+        if (garantias.isEmpty) Text('Nada vence en los próximos 60 días.', style: TextStyle(color: c.muted, fontSize: 13)),
+        for (final g in garantias.take(8))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Row(children: [
+              Container(width: 4, height: 38, decoration: BoxDecoration(color: (g['dias'] as num) <= 15 ? c.bad : c.warn, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${g['tag']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text('${g['equipo']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.muted)),
+                ]),
+              ),
+              Text('${g['dias']} d', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: (g['dias'] as num) <= 15 ? c.bad : c.warn)),
+            ]),
+          ),
+      ]),
+      SwissSection('Módulos', [
+        _ModuleRow(index: '01', title: 'Inventario', subtitle: 'Activos de TI', onTap: () => context.go('/inventario')),
+        const _ModuleRow(index: '02', title: 'Tickets', subtitle: 'Próximamente'),
+        const _ModuleRow(index: '03', title: 'Licencias', subtitle: 'Próximamente'),
+        const _ModuleRow(index: '04', title: 'Usuarios', subtitle: 'Próximamente'),
+      ]),
+    ]);
+
+    return wide
+        ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(flex: 3, child: main), const SizedBox(width: 24), SizedBox(width: 340, child: side)])
+        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [main, const SizedBox(height: 24), side]);
+  }
+}
+
+class _ModuleRow extends StatelessWidget {
+  final String index, title, subtitle;
+  final VoidCallback? onTap;
+  const _ModuleRow({required this.index, required this.title, required this.subtitle, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sw;
+    final enabled = onTap != null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
+        child: Row(children: [
+          SizedBox(width: 32, child: Text(index, style: TextStyle(fontSize: 12, color: c.muted))),
+          Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: enabled ? c.ink : c.muted))),
+          Text(subtitle, style: TextStyle(fontSize: 12, color: c.muted)),
+          const SizedBox(width: 8),
+          Icon(Icons.arrow_forward, size: 16, color: enabled ? c.accent : c.edge),
+        ]),
       ),
     );
   }
