@@ -72,7 +72,7 @@ class AssetCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 13)),
                     const SizedBox(height: 2),
                     Text(
-                      '${asset.category} · ${asset.serialNumber}',
+                      '${asset.category} · ${asset.serialNumber ?? 'Sin S/N'}',
                       style: const TextStyle(
                           fontSize: 11, color: _textSecondary),
                     ),
