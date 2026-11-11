@@ -153,7 +153,7 @@ class InventarioApi {
 
   // ---- Empleados
   Future<List<Employee>> getEmpleados() async {
-    final r = await _dio.get<List<dynamic>>('/inventario/employees');
+    final r = await _dio.get<List<dynamic>>('/inventario/employees/overview');
     return (r.data ?? []).map((e) => Employee.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -191,6 +191,36 @@ class InventarioApi {
 
   Future<void> restaurar(String tag) async => await _dio.post('/inventario/$tag/restore');
   Future<void> purgar(String tag) async => await _dio.delete('/inventario/$tag/purge');
+
+  Future<int> limpiarBorradores({int dias = 7}) async {
+    final r = await _dio.delete<Map<String, dynamic>>('/inventario/borradores', queryParameters: {'dias': dias});
+    return (r.data?['eliminados'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<Employee> getEmpleado(int id) async {
+    final r = await _dio.get<Map<String, dynamic>>('/inventario/employees/$id');
+    return Employee.fromJson(r.data!);
+  }
+
+  Future<List<ItAsset>> getEmpleadoActivos(int id) async {
+    final r = await _dio.get<List<dynamic>>('/inventario/employees/$id/assets');
+    return (r.data ?? []).map((e) => ItAsset.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getEmpleadoHistorial(int id) async {
+    final r = await _dio.get<List<dynamic>>('/inventario/employees/$id/history');
+    return (r.data ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<void> descargarActaEmpleado(int id, String name) async {
+    final r = await _dio.get<List<int>>('/inventario/employees/$id/pdf', options: Options(responseType: ResponseType.bytes));
+    await FileSaver.instance.saveFile(
+      name: 'acta_${name.replaceAll(' ', '_')}',
+      bytes: Uint8List.fromList(r.data!),
+      ext: 'pdf',
+      mimeType: MimeType.pdf,
+    );
+  }
 
   Future<void> descargarEtiquetas([List<String>? tags]) async {
     final r = await _dio.get<List<int>>(

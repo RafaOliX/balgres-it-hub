@@ -70,8 +70,7 @@ class _PapeleraPageState extends ConsumerState<PapeleraPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF3F4F6),
-        appBar: AppBar(title: const Text('Papelera'), backgroundColor: Colors.white, elevation: 0.5),
+        appBar: AppBar(title: const Text('Papelera'), elevation: 0.5),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _items.isEmpty
@@ -83,7 +82,6 @@ class _PapeleraPageState extends ConsumerState<PapeleraPage> {
                     itemBuilder: (_, i) {
                       final a = _items[i];
                       return ListTile(
-                        tileColor: Colors.white,
                         leading: const Icon(Icons.delete_outline),
                         title: Text('${a.assetTag} · ${a.brand} ${a.model}'),
                         subtitle: Text('${a.category} · eliminado ${a.deletedAt?.toString().substring(0, 16) ?? ''}'),

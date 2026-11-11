@@ -20,13 +20,15 @@ class Employee {
   final String? email;
   final String? department;
   final bool active;
-  const Employee({required this.id, required this.name, this.email, this.department, this.active = true});
+  final int assetCount;
+  const Employee({required this.id, required this.name, this.email, this.department, this.active = true, this.assetCount = 0});
   factory Employee.fromJson(Map<String, dynamic> j) => Employee(
         id: j['id'] as int,
         name: j['name'] as String,
         email: j['email'] as String?,
         department: j['department'] as String?,
         active: j['active'] as bool? ?? true,
+        assetCount: (j['asset_count'] as num?)?.toInt() ?? 0,
       );
 }
 

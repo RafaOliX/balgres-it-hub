@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,29 +7,36 @@ import 'package:go_router/go_router.dart';
 import '../data/filters.dart';
 import '../data/inventario_api.dart';
 import '../data/providers.dart';
+import '../data/table_prefs.dart';
 import '../models/category.dart';
 import '../models/it_asset.dart';
+import '../ui/swiss.dart';
 import '../widgets/asset_card.dart';
 import '../widgets/asset_thumbnail.dart';
+import '../widgets/bulk_bar.dart';
+import '../widgets/columns_dialog.dart';
 import '../widgets/filter_sheet.dart';
 import 'catalogos_page.dart';
 import 'inventario_dashboard_page.dart';
 import 'papelera_page.dart';
 
-const _primary = Color(0xFF4F46E5);
-const _bg = Color(0xFFF3F4F6);
-const _border = Color(0xFFE5E7EB);
-
 List<PopupMenuEntry<String>> _menuItems() => const <PopupMenuEntry<String>>[
       PopupMenuItem(value: 'dashboard', child: Text('Dashboard')),
       PopupMenuItem(value: 'catalogos', child: Text('Empleados y ubicaciones')),
       PopupMenuDivider(),
-      PopupMenuItem(value: 'labels', child: Text('Etiquetas QR (PDF)')),
+      PopupMenuItem(value: 'labels', child: Text('Etiquetas QR (todas)')),
       PopupMenuItem(value: 'export', child: Text('Exportar Excel')),
       PopupMenuItem(value: 'import', child: Text('Importar Excel')),
       PopupMenuDivider(),
+      PopupMenuItem(value: 'drafts', child: Text('Limpiar borradores antiguos')),
       PopupMenuItem(value: 'trash', child: Text('Papelera')),
     ];
+
+class _GroupHeader {
+  final String label;
+  final int count;
+  const _GroupHeader(this.label, this.count);
+}
 
 class InventarioPage extends ConsumerStatefulWidget {
   const InventarioPage({super.key});
@@ -36,29 +44,44 @@ class InventarioPage extends ConsumerStatefulWidget {
   ConsumerState<InventarioPage> createState() => _InventarioPageState();
 }
 
-class _InventarioPageState extends ConsumerState<InventarioPage> {
+class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBindingObserver {
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
     _searchCtrl.text = ref.read(inventoryFilterProvider).query;
+    WidgetsBinding.instance.addObserver(this);
+    _poll = Timer.periodic(const Duration(seconds: 20), (_) => _silentRefresh());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _poll?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _silentRefresh();
+  }
+
+  void _silentRefresh() {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    ref.invalidate(inventarioListProvider);
   }
 
   void _snack(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  void _push(Widget page) =>
-      Navigator.push(context, MaterialPageRoute(builder: (_) => page)).then((_) => ref.invalidate(inventarioListProvider));
+  void _push(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page)).then((_) => ref.invalidate(inventarioListProvider));
 
   Future<void> _refresh() async {
     ref.invalidate(inventarioListProvider);
@@ -79,6 +102,8 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
         await _exportarExcel();
       case 'import':
         await _importarExcel();
+      case 'drafts':
+        await _limpiarBorradores();
       case 'labels':
         try {
           await ref.read(inventarioApiProvider).descargarEtiquetas();
@@ -86,6 +111,28 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
         } catch (e) {
           _snack('No se pudieron generar las etiquetas: ${apiError(e)}');
         }
+    }
+  }
+
+  Future<void> _limpiarBorradores() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Limpiar borradores'),
+        content: const Text('Se eliminarán definitivamente los borradores sin finalizar con más de 7 días.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final n = await ref.read(inventarioApiProvider).limpiarBorradores(dias: 7);
+      ref.invalidate(inventarioListProvider);
+      _snack('$n borrador(es) eliminados');
+    } catch (e) {
+      _snack('Error: ${apiError(e)}');
     }
   }
 
@@ -135,7 +182,6 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
     );
   }
 
-  /// Enter en el buscador (o lector de códigos): abre el activo si el tag coincide exacto o hay un solo resultado.
   void _onSubmit(String v, List<ItAsset> filtered, List<ItAsset> all) {
     final q = v.trim().toLowerCase();
     if (q.isEmpty) return;
@@ -144,12 +190,11 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
     if (target == null) return;
     final f = ref.read(inventoryFilterProvider);
     ref.read(inventoryFilterProvider.notifier).state = f.copyWith(query: '');
-    context.push('/inventario/detalle/${target.assetTag}').then((_) => ref.invalidate(inventarioListProvider));
+    openAsset(context, target.assetTag);
   }
 
   @override
   Widget build(BuildContext context) {
-    // mantiene el texto del buscador sincronizado cuando se limpia desde otro lado
     ref.listen<String>(inventoryFilterProvider.select((f) => f.query), (_, q) {
       if (_searchCtrl.text != q) {
         _searchCtrl.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
@@ -158,75 +203,84 @@ class _InventarioPageState extends ConsumerState<InventarioPage> {
 
     final async = ref.watch(inventarioListProvider);
     final filter = ref.watch(inventoryFilterProvider);
+    final sel = ref.watch(selectionProvider);
+    final colState = ref.watch(columnsProvider);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
 
     final items = async.valueOrNull ?? const <ItAsset>[];
     final filtered = applyFilter(items, filter);
     final groups = groupAssets(filtered, filter.groupBy);
+    final rows = <Object>[
+      for (final e in groups.entries) ...[
+        if (e.key.isNotEmpty) _GroupHeader(e.key, e.value.length),
+        ...e.value,
+      ],
+    ];
+    final allCols = allColumns(items);
+    final byId = {for (final d in allCols) d.id: d};
+    final visibleCols = [for (final id in colState.visible) if (byId[id] != null) byId[id]!];
 
+    Widget body;
+    if (items.isEmpty && async.isLoading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (items.isEmpty && async.hasError) {
+      body = Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Error: ${apiError(async.error!)}'),
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: _refresh, child: const Text('Reintentar')),
+        ]),
+      );
+    } else if (items.isEmpty) {
+      body = EmptyState(icon: Icons.inventory_2_outlined, title: 'Aún no hay activos', action: 'Registrar el primero', onAction: () => openNewAsset(context));
+    } else if (filtered.isEmpty) {
+      body = EmptyState(
+        icon: Icons.search_off,
+        title: 'Sin resultados',
+        subtitle: 'Prueba con menos palabras o quita algún filtro.',
+        action: 'Limpiar filtros',
+        onAction: () => ref.read(inventoryFilterProvider.notifier).state = const InventoryFilter(),
+      );
+    } else {
+      body = LayoutBuilder(
+        builder: (context, c) => c.maxWidth >= 760
+            ? _DesktopTable(rows: rows, cols: visibleCols, allTags: filtered.map((a) => a.assetTag).toList(), onImageTap: _showImageDialog)
+            : _MobileList(rows: rows, onRefresh: _refresh),
+      );
+    }
+
+    final pad = isMobile ? 12.0 : 24.0;
     return Scaffold(
-      backgroundColor: _bg,
       appBar: isMobile
           ? AppBar(
-              title: const Text('Inventario', style: TextStyle(fontWeight: FontWeight.bold)),
-              backgroundColor: Colors.white,
+              title: const Text('Inventario'),
               actions: [
+                const ThemeToggleButton(),
                 IconButton(icon: const Icon(Icons.category_outlined), tooltip: 'Categorías', onPressed: () => context.push('/categorias')),
                 PopupMenuButton<String>(onSelected: _onMenu, itemBuilder: (_) => _menuItems()),
               ],
             )
           : null,
-      body: Column(children: [
-        _Toolbar(
-          controller: _searchCtrl,
-          focus: _searchFocus,
-          items: items,
-          shown: filtered.length,
-          isMobile: isMobile,
-          onMenu: _onMenu,
-          onSubmit: (v) => _onSubmit(v, filtered, items),
-          onRefresh: _refresh,
-        ),
-        Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('Error: ${apiError(e)}'),
-                const SizedBox(height: 12),
-                OutlinedButton(onPressed: _refresh, child: const Text('Reintentar')),
-              ]),
-            ),
-            data: (_) {
-              if (items.isEmpty) {
-                return _EmptyState(
-                  icon: Icons.inventory_2_outlined,
-                  title: 'Aún no hay activos',
-                  action: 'Registrar el primero',
-                  onAction: () => context.push('/inventario/nuevo'),
-                );
-              }
-              if (filtered.isEmpty) {
-                return _EmptyState(
-                  icon: Icons.search_off,
-                  title: 'Sin resultados',
-                  subtitle: 'Prueba con menos palabras o quita algún filtro.',
-                  action: 'Limpiar filtros',
-                  onAction: () => ref.read(inventoryFilterProvider.notifier).state = const InventoryFilter(),
-                );
-              }
-              return LayoutBuilder(
-                builder: (context, c) => c.maxWidth >= 900
-                    ? _AssetsTable(groups: groups, onImageTap: _showImageDialog)
-                    : _AssetsList(groups: groups, onRefresh: _refresh),
-              );
-            },
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(pad, pad, pad, 0),
+        child: Column(children: [
+          _Toolbar(
+            controller: _searchCtrl,
+            focus: _searchFocus,
+            items: items,
+            shown: filtered.length,
+            isMobile: isMobile,
+            onMenu: _onMenu,
+            onSubmit: (v) => _onSubmit(v, filtered, items),
+            onRefresh: _refresh,
+            onColumns: () => showColumnsDialog(context, allCols),
           ),
-        ),
-      ]),
-      floatingActionButton: isMobile
-          ? FloatingActionButton(onPressed: () => context.push('/inventario/nuevo'), backgroundColor: _primary, child: const Icon(Icons.add, color: Colors.white))
-          : null,
+          if (sel.isNotEmpty) BulkBar(selected: items.where((a) => sel.contains(a.assetTag)).toList()),
+          const SizedBox(height: 14),
+          Expanded(child: body),
+        ]),
+      ),
+      floatingActionButton: isMobile ? FloatingActionButton(onPressed: () => openNewAsset(context), child: const Icon(Icons.add)) : null,
     );
   }
 }
@@ -241,40 +295,32 @@ class _Toolbar extends ConsumerWidget {
   final ValueChanged<String> onMenu;
   final ValueChanged<String> onSubmit;
   final VoidCallback onRefresh;
+  final VoidCallback onColumns;
 
   const _Toolbar({
-    required this.controller,
-    required this.focus,
-    required this.items,
-    required this.shown,
-    required this.isMobile,
-    required this.onMenu,
-    required this.onSubmit,
-    required this.onRefresh,
+    required this.controller, required this.focus, required this.items, required this.shown, required this.isMobile,
+    required this.onMenu, required this.onSubmit, required this.onRefresh, required this.onColumns,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.sw;
     final filter = ref.watch(inventoryFilterProvider);
     final cats = ref.watch(categoriasListProvider).valueOrNull ?? const <Category>[];
     void set(InventoryFilter f) => ref.read(inventoryFilterProvider.notifier).state = f;
 
-    // contadores de los chips: respetan búsqueda y demás filtros, pero no el estado
     final base = applyFilter(items, filter, ignoreStatus: true);
     int countStatus(String s) => base.where((a) => !a.isDraft && a.status == s).length;
-    final chips = <(String, int, bool, VoidCallback)>[
-      ('Todos', base.where((a) => !a.isDraft).length, filter.statuses.isEmpty && !filter.showDrafts,
-          () => set(filter.copyWith(statuses: <String>{}, showDrafts: false))),
+    final tabs = <(String, int, bool, VoidCallback)>[
+      ('Todos', base.where((a) => !a.isDraft).length, filter.statuses.isEmpty && !filter.showDrafts, () => set(filter.copyWith(statuses: <String>{}, showDrafts: false))),
       for (final s in const ['Operativo', 'En Revisión', 'Retirado'])
-        (s, countStatus(s), !filter.showDrafts && filter.statuses.length == 1 && filter.statuses.contains(s),
-            () => set(filter.copyWith(statuses: {s}, showDrafts: false))),
-      ('Borradores', base.where((a) => a.isDraft).length, filter.showDrafts,
-          () => set(filter.copyWith(statuses: <String>{}, showDrafts: true))),
+        (s, countStatus(s), !filter.showDrafts && filter.statuses.length == 1 && filter.statuses.contains(s), () => set(filter.copyWith(statuses: {s}, showDrafts: false))),
+      ('Borradores', base.where((a) => a.isDraft).length, filter.showDrafts, () => set(filter.copyWith(statuses: <String>{}, showDrafts: true))),
     ];
 
     final extra = <Widget>[
       for (final id in filter.categoryIds)
-        _chip('Cat: ${cats.where((c) => c.id == id).firstOrNull?.name ?? id}', () => set(filter.copyWith(categoryIds: {...filter.categoryIds}..remove(id)))),
+        _chip('Cat: ${cats.where((x) => x.id == id).firstOrNull?.name ?? id}', () => set(filter.copyWith(categoryIds: {...filter.categoryIds}..remove(id)))),
       for (final l in filter.locations) _chip('Ubic: $l', () => set(filter.copyWith(locations: {...filter.locations}..remove(l)))),
       if (filter.assign != AssignFilter.all) _chip(assignLabels[filter.assign]!, () => set(filter.copyWith(assign: AssignFilter.all))),
       if (filter.warranty != WarrantyFilter.all) _chip('Garantía: ${warrantyLabels[filter.warranty]}', () => set(filter.copyWith(warranty: WarrantyFilter.all))),
@@ -286,15 +332,16 @@ class _Toolbar extends ConsumerWidget {
     final totalFinal = items.where((a) => !a.isDraft).length;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, isMobile ? 10 : 20, isMobile ? 16 : 24, 12),
-      color: Colors.white,
+      padding: EdgeInsets.fromLTRB(isMobile ? 14 : 22, isMobile ? 14 : 20, isMobile ? 14 : 22, 8),
+      decoration: cardDeco(context),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (!isMobile) ...[
-          Row(children: [
-            const Expanded(
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Inventario', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-                Text('Activos de TI', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const Text('Inventario', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -1.2, height: 1.0)),
+                const SizedBox(height: 6),
+                Text('$totalFinal activos de TI', style: TextStyle(fontSize: 13, color: c.muted)),
               ]),
             ),
             IconButton(icon: const Icon(Icons.refresh), tooltip: 'Recargar', onPressed: onRefresh),
@@ -304,12 +351,12 @@ class _Toolbar extends ConsumerWidget {
             OutlinedButton.icon(onPressed: () => context.push('/categorias'), icon: const Icon(Icons.category_outlined, size: 18), label: const Text('Categorías')),
             PopupMenuButton<String>(onSelected: onMenu, itemBuilder: (_) => _menuItems(), tooltip: 'Más opciones'),
             const SizedBox(width: 8),
-            FilledButton.icon(onPressed: () => context.push('/inventario/nuevo'), icon: const Icon(Icons.add, size: 18), label: const Text('Nuevo activo'), style: FilledButton.styleFrom(backgroundColor: _primary)),
+            FilledButton.icon(onPressed: () => openNewAsset(context), icon: const Icon(Icons.add, size: 18), label: const Text('Nuevo activo')),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
         ],
         SizedBox(
-          height: 46,
+          height: 48,
           child: TextField(
             controller: controller,
             focusNode: focus,
@@ -331,211 +378,221 @@ class _Toolbar extends ConsumerWidget {
                         focus.requestFocus();
                       },
                     ),
-              filled: true,
-              fillColor: _bg,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            for (final c in chips) _StatusChip(label: c.$1, count: c.$2, active: c.$3, onTap: c.$4),
-          ]),
+          child: Row(children: [for (final t in tabs) _StatusPill(label: t.$1, count: t.$2, active: t.$3, onTap: t.$4)]),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Row(children: [
           OutlinedButton.icon(
             onPressed: () => showFiltersSheet(context),
             icon: Badge(isLabelVisible: n > 0, label: Text('$n'), child: const Icon(Icons.tune, size: 18)),
             label: const Text('Filtros'),
           ),
+          if (!isMobile) ...[
+            const SizedBox(width: 8),
+            OutlinedButton.icon(onPressed: onColumns, icon: const Icon(Icons.view_column_outlined, size: 18), label: const Text('Columnas')),
+          ],
           IconButton(icon: const Icon(Icons.bookmarks_outlined), tooltip: 'Vistas guardadas', onPressed: () => showSavedViewsDialog(context)),
           Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text('$shown de $totalFinal activos', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ),
+            child: Align(alignment: Alignment.centerRight, child: Text('$shown de $totalFinal', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.muted))),
           ),
           if (!filter.isDefault) TextButton(onPressed: () => set(const InventoryFilter()), child: const Text('Limpiar')),
         ]),
-        if (extra.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 8, runSpacing: 4, children: extra)),
+        if (extra.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6, top: 6), child: Wrap(spacing: 8, runSpacing: 4, children: extra)),
+        const SizedBox(height: 8),
       ]),
     );
   }
 
-  Widget _chip(String label, VoidCallback onDelete) => InputChip(
-        label: Text(label, style: const TextStyle(fontSize: 12)),
-        onDeleted: onDelete,
-        visualDensity: VisualDensity.compact,
-        backgroundColor: _bg,
-      );
+  Widget _chip(String label, VoidCallback onDelete) => InputChip(label: Text(label, style: const TextStyle(fontSize: 12)), onDeleted: onDelete, visualDensity: VisualDensity.compact);
 }
 
-class _StatusChip extends StatelessWidget {
+class _StatusPill extends StatelessWidget {
   final String label;
   final int count;
   final bool active;
   final VoidCallback onTap;
-  const _StatusChip({required this.label, required this.count, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: active ? _primary.withOpacity(0.1) : _bg,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: active ? _primary : _border),
-            ),
-            child: Row(children: [
-              Text(label, style: TextStyle(fontSize: 13, color: active ? _primary : Colors.black87, fontWeight: active ? FontWeight.w600 : FontWeight.w500)),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: active ? _primary : _border, borderRadius: BorderRadius.circular(10)),
-                child: Text('$count', style: TextStyle(fontSize: 11, color: active ? Colors.white : Colors.black54, fontWeight: FontWeight.w600)),
-              ),
-            ]),
-          ),
-        ),
-      );
-}
-
-// ====================================================================== resultados
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final String action;
-  final VoidCallback onAction;
-  const _EmptyState({required this.icon, required this.title, this.subtitle, required this.action, required this.onAction});
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 56, color: Colors.grey.shade400),
-          const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: const TextStyle(color: Colors.grey))),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onAction, child: Text(action)),
-        ]),
-      );
-}
-
-class _AssetsTable extends StatelessWidget {
-  final Map<String, List<ItAsset>> groups;
-  final void Function(String) onImageTap;
-  const _AssetsTable({required this.groups, required this.onImageTap});
-
-  Color _statusColor(String? s) => switch (s) { 'Operativo' => Colors.green, 'En Revisión' => Colors.orange, 'Retirado' => Colors.red, _ => Colors.grey };
+  const _StatusPill({required this.label, required this.count, required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) => SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (final e in groups.entries) ...[
-            if (e.key.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 12),
-                child: Text('${e.key} (${e.value.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.indigo)),
-              ),
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _border)),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minWidth: c.maxWidth - 50),
-                  child: DataTable(
-                    showCheckboxColumn: false,
-                    columns: const [
-                      DataColumn(label: Text('Activo')),
-                      DataColumn(label: Text('Registro')),
-                      DataColumn(label: Text('Cant.')),
-                      DataColumn(label: Text('Categoría')),
-                      DataColumn(label: Text('Marca / Modelo')),
-                      DataColumn(label: Text('Ubicación')),
-                      DataColumn(label: Text('Asignado a')),
-                      DataColumn(label: Text('Estado')),
-                    ],
-                    rows: e.value.map((a) {
-                      final col = _statusColor(a.status);
-                      return DataRow(
-                        onSelectChanged: (_) => context.push('/inventario/detalle/${a.assetTag}'),
-                        cells: [
-                          DataCell(Row(children: [
-                            GestureDetector(onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); }, child: AssetThumbnail(asset: a, size: 40)),
-                            const SizedBox(width: 8),
-                            Text(a.assetTag, style: TextStyle(fontWeight: FontWeight.w600, color: a.isDraft ? Colors.grey : Colors.black)),
-                            if (a.isDraft)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: Chip(label: const Text('Borrador', style: TextStyle(fontSize: 10)), backgroundColor: Colors.grey.shade200, visualDensity: VisualDensity.compact),
-                              ),
-                          ])),
-                          DataCell(Text(a.createdAt.toString().substring(0, 10))),
-                          DataCell(Text('${a.quantity} ${a.unit}')),
-                          DataCell(Text(a.category)),
-                          DataCell(Text('${a.brand} ${a.model}')),
-                          DataCell(Text(a.location ?? '—')),
-                          DataCell(Text(a.assignedTo ?? '—')),
-                          DataCell(Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(color: col.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-                            child: Text(a.status ?? '—', style: TextStyle(color: col, fontSize: 11, fontWeight: FontWeight.w600)),
-                          )),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ]),
+    final c = context.sw;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8, bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? c.accent.withValues(alpha: 0.13) : c.panel,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: active ? c.accent : c.line),
+          ),
+          child: Row(children: [
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500, color: active ? c.accent : c.ink)),
+            const SizedBox(width: 8),
+            Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? c.accent : c.muted)),
+          ]),
+        ),
       ),
     );
   }
 }
 
-class _AssetsList extends StatelessWidget {
-  final Map<String, List<ItAsset>> groups;
-  final Future<void> Function() onRefresh;
-  const _AssetsList({required this.groups, required this.onRefresh});
+// ====================================================================== tabla (escritorio)
+class _DesktopTable extends ConsumerWidget {
+  final List<Object> rows;
+  final List<ColumnDef> cols;
+  final List<String> allTags;
+  final void Function(String) onImageTap;
+  const _DesktopTable({required this.rows, required this.cols, required this.allTags, required this.onImageTap});
+
+  Widget _cell(BuildContext context, ColumnDef col, ItAsset a) {
+    final c = context.sw;
+    Widget child;
+    switch (col.id) {
+      case 'asset':
+        child = Row(children: [
+          GestureDetector(onTap: () { if (a.imageUrl != null) onImageTap(a.imageUrl!); }, child: AssetThumbnail(asset: a, size: 34)),
+          const SizedBox(width: 10),
+          Flexible(child: Text(a.assetTag, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: a.isDraft ? c.muted : c.ink))),
+        ]);
+      case 'status':
+        child = StatusTag(status: a.status, draft: a.isDraft);
+      case 'warranty':
+        final w = a.warrantyUntil;
+        final col2 = w == null ? c.muted : (w.isBefore(DateTime.now()) ? c.bad : c.ink);
+        child = Text(col.text(a), style: TextStyle(fontSize: 13, color: col2, fontWeight: w != null && w.isBefore(DateTime.now()) ? FontWeight.w700 : FontWeight.w400));
+      case 'equipo':
+        child = Text(col.text(a), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500));
+      default:
+        final t = col.text(a);
+        child = Text(t, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: t == '—' ? c.muted : c.ink));
+    }
+    return SizedBox(width: col.width, child: Padding(padding: const EdgeInsets.only(right: 12), child: Align(alignment: Alignment.centerLeft, child: child)));
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final rows = <Object>[];
-    for (final e in groups.entries) {
-      if (e.key.isNotEmpty) rows.add('${e.key} (${e.value.length})');
-      rows.addAll(e.value);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.sw;
+    final sel = ref.watch(selectionProvider);
+    final totalW = 56 + cols.fold<double>(0, (s, e) => s + e.width) + 24;
+    final allSelected = allTags.isNotEmpty && allTags.every(sel.contains);
+    final some = sel.isNotEmpty && !allSelected;
+
+    void toggle(String tag) {
+      final n = {...sel};
+      n.contains(tag) ? n.remove(tag) : n.add(tag);
+      ref.read(selectionProvider.notifier).state = n;
     }
+
+    return Container(
+      decoration: cardDeco(context),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(builder: (ctx, cs) {
+        final w = totalW > cs.maxWidth ? totalW : cs.maxWidth;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: w,
+            height: cs.maxHeight,
+            child: Column(children: [
+              Container(
+                height: 48,
+                color: c.panel,
+                child: Row(children: [
+                  SizedBox(
+                    width: 56,
+                    child: Checkbox(
+                      tristate: true,
+                      value: allSelected ? true : (some ? null : false),
+                      onChanged: (_) => ref.read(selectionProvider.notifier).state = allSelected ? <String>{} : {...allTags},
+                    ),
+                  ),
+                  for (final col in cols) SizedBox(width: col.width, child: Padding(padding: const EdgeInsets.only(right: 12), child: SectionLabel(col.label))),
+                ]),
+              ),
+              Divider(height: 1, color: c.line),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (_, i) {
+                    final r = rows[i];
+                    if (r is _GroupHeader) {
+                      return Container(
+                        height: 40,
+                        padding: const EdgeInsets.only(left: 20),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.06), border: Border(bottom: BorderSide(color: c.line))),
+                        child: Row(children: [
+                          Text(r.label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: c.accent)),
+                          const SizedBox(width: 8),
+                          Text('${r.count}', style: TextStyle(fontSize: 12, color: c.muted)),
+                        ]),
+                      );
+                    }
+                    final a = r as ItAsset;
+                    final selected = sel.contains(a.assetTag);
+                    return InkWell(
+                      onTap: () => sel.isNotEmpty ? toggle(a.assetTag) : openAsset(context, a.assetTag),
+                      child: Container(
+                        height: 58,
+                        decoration: BoxDecoration(color: selected ? c.accent.withValues(alpha: 0.08) : null, border: Border(bottom: BorderSide(color: c.line))),
+                        child: Row(children: [
+                          SizedBox(width: 56, child: Checkbox(value: selected, onChanged: (_) => toggle(a.assetTag))),
+                          for (final col in cols) _cell(context, col, a),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ====================================================================== lista (móvil)
+class _MobileList extends ConsumerWidget {
+  final List<Object> rows;
+  final Future<void> Function() onRefresh;
+  const _MobileList({required this.rows, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sel = ref.watch(selectionProvider);
+    void toggle(String tag) {
+      final n = {...sel};
+      n.contains(tag) ? n.remove(tag) : n.add(tag);
+      ref.read(selectionProvider.notifier).state = n;
+    }
+
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(bottom: 90),
         itemCount: rows.length,
         itemBuilder: (_, i) {
           final r = rows[i];
-          if (r is String) {
+          if (r is _GroupHeader) {
             return Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
-              child: Text(r, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.indigo)),
+              padding: const EdgeInsets.only(top: 14, bottom: 8, left: 4),
+              child: Text('${r.label} (${r.count})', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: context.sw.accent)),
             );
           }
-          return Padding(padding: const EdgeInsets.only(bottom: 8), child: AssetCard(asset: r as ItAsset));
+          final a = r as ItAsset;
+          return AssetCard(asset: a, selected: sel.contains(a.assetTag), selectionMode: sel.isNotEmpty, onToggle: () => toggle(a.assetTag));
         },
       ),
     );

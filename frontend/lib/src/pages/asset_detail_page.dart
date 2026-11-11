@@ -6,12 +6,11 @@ import 'package:image_picker/image_picker.dart';
 import '../data/inventario_api.dart';
 import '../data/providers.dart';
 import '../models/catalogs.dart';
+import '../models/category.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
+import '../ui/swiss.dart';
 import 'asset_edit_page.dart';
-
-const _border = Color(0xFFE5E7EB);
-const _muted = Color(0xFF6B7280);
 
 class AssetDetailPage extends ConsumerStatefulWidget {
   final String assetTag;
@@ -37,11 +36,13 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: color));
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final api = ref.read(inventarioApiProvider);
       final asset = await api.obtener(widget.assetTag);
@@ -65,8 +66,19 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).actualizar(_asset!.assetTag, {'is_draft': false});
       ref.invalidate(inventarioListProvider);
-      _load();
+      _load(silent: true);
       _snack('Activo finalizado correctamente.', color: Colors.green);
+    } catch (e) {
+      _snack('Error: ${apiError(e)}');
+    }
+  }
+
+  Future<void> _ajustar(int n) async {
+    try {
+      await ref.read(inventarioApiProvider).ajustarStock(_asset!.assetTag, n);
+      ref.invalidate(inventarioListProvider);
+      await _load(silent: true);
+      _snack(n > 0 ? 'Se agregó 1 unidad' : 'Se restó 1 unidad');
     } catch (e) {
       _snack('Error: ${apiError(e)}');
     }
@@ -76,7 +88,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).descargarEtiquetas([_asset!.assetTag]);
     } catch (e) {
-      _snack('No se pudo generar la etiqueta (¿falta la dependencia segno en el backend?)');
+      _snack('No se pudo generar la etiqueta: ${apiError(e)}');
     }
   }
 
@@ -96,7 +108,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
         content: Text('¿Enviar ${_asset!.assetTag} a la papelera? Podrás restaurarlo después.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
         ],
       ),
     );
@@ -129,13 +141,14 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
             width: 400,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<int>(
-                value: empId, isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Empleado *', border: OutlineInputBorder()),
+                value: empId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Empleado *'),
                 items: emps.map((e) => DropdownMenuItem(value: e.id, child: Text(e.department == null ? e.name : '${e.name} · ${e.department}', overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: (v) => setM(() => empId = v),
               ),
               const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas (opcional)', border: OutlineInputBorder())),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas (opcional)')),
             ]),
           ),
           actions: [
@@ -149,7 +162,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).asignar(_asset!.assetTag, empId!, notes.text.trim());
       ref.invalidate(inventarioListProvider);
-      _load();
+      _load(silent: true);
       _snack('Activo asignado.', color: Colors.green);
     } catch (e) {
       _snack('Error: ${apiError(e)}');
@@ -162,7 +175,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Registrar devolución'),
-        content: SizedBox(width: 400, child: TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas / estado al devolver', border: OutlineInputBorder()))),
+        content: SizedBox(width: 400, child: TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas / estado al devolver'))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Devolver')),
@@ -173,7 +186,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).devolver(_asset!.assetTag, notes.text.trim());
       ref.invalidate(inventarioListProvider);
-      _load();
+      _load(silent: true);
     } catch (e) {
       _snack('Error: ${apiError(e)}');
     }
@@ -203,7 +216,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).subirImagenes(_asset!.assetTag, picked);
       ref.invalidate(inventarioListProvider);
-      _load();
+      _load(silent: true);
     } catch (e) {
       _snack('Error: ${apiError(e)}');
     }
@@ -213,10 +226,11 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar foto'), content: const Text('¿Borrar esta foto del activo?'),
+        title: const Text('Eliminar foto'),
+        content: const Text('¿Borrar esta foto del activo?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
         ],
       ),
     );
@@ -224,7 +238,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     try {
       await ref.read(inventarioApiProvider).eliminarImagen(_asset!.assetTag, img.id);
       ref.invalidate(inventarioListProvider);
-      _load();
+      _load(silent: true);
     } catch (e) {
       _snack('Error: ${apiError(e)}');
     }
@@ -234,7 +248,8 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
         child: Stack(alignment: Alignment.center, children: [
           InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain)),
           Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.black54), onPressed: () => Navigator.of(ctx).pop())),
@@ -249,23 +264,30 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF3F4F6),
         appBar: AppBar(
-          backgroundColor: Colors.white,
           title: Text(widget.assetTag),
           actions: [
             IconButton(
-              icon: const Icon(Icons.edit_outlined), tooltip: 'Editar',
-              onPressed: _asset == null ? null : () async {
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => AssetEditPage(asset: _asset!)));
-                _load();
-              },
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Editar',
+              onPressed: _asset == null
+                  ? null
+                  : () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => AssetEditPage(asset: _asset!)));
+                      ref.invalidate(inventarioListProvider);
+                      _load(silent: true);
+                    },
             ),
             IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Etiqueta QR', onPressed: _asset == null ? null : _etiqueta),
             IconButton(icon: const Icon(Icons.picture_as_pdf_outlined), tooltip: 'Acta PDF', onPressed: _asset == null ? null : _acta),
             IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Enviar a papelera', onPressed: _asset == null ? null : _eliminar),
+            const SizedBox(width: 8),
           ],
-          bottom: const TabBar(tabs: [Tab(text: 'Detalles'), Tab(text: 'Asignaciones'), Tab(text: 'Historial')]),
+          bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [Tab(text: 'Detalles'), Tab(text: 'Asignaciones'), Tab(text: 'Historial')],
+          ),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -276,212 +298,232 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
     );
   }
 
-  Widget _detalles() {
-    final a = _asset!;
-    return ListView(padding: const EdgeInsets.all(24), children: [
-      if (a.isDraft)
-        Container(
-          margin: const EdgeInsets.only(bottom: 24), padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.blue.shade50, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            const Icon(Icons.info_outline, color: Colors.blue),
-            const SizedBox(width: 12),
-            const Expanded(child: Text('Este equipo está guardado como Borrador. Aún no se ha finalizado el registro.', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500))),
-            FilledButton(onPressed: _finalizarBorrador, child: const Text('Finalizar Registro')),
-          ]),
-        ),
-      _galeriaFotos(),
-      const SizedBox(height: 24),
-      _card('Información', [
-        _kv('Tag', a.assetTag),
-        _kvWidget('Cantidad', Row(
-          children: [
-            Text('${a.quantity} ${a.unit}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 12),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Restar 1 (Usar)',
-              onPressed: () async {
-                try {
-                  await ref.read(inventarioApiProvider).ajustarStock(a.assetTag, -1);
-                  _load();
-                  _snack('Se restó 1 unidad', color: Colors.orange);
-                } catch (e) { _snack('Error: ${apiError(e)}'); }
-              },
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Sumar 1 (Ingreso)',
-              onPressed: () async {
-                try {
-                  await ref.read(inventarioApiProvider).ajustarStock(a.assetTag, 1);
-                  _load();
-                  _snack('Se agregó 1 unidad', color: Colors.green);
-                } catch (e) { _snack('Error: ${apiError(e)}'); }
-              },
-            ),
-          ],
-        )),
-        _kv('Categoría', a.category),
-        _kv('Marca', a.brand),
-        _kv('Modelo', a.model),
-        _kv('S/N', a.serialNumber ?? 'N/A'),
-        _kv('Ubicación', a.location ?? '—'),
-        _kv('Estado', a.status ?? '—'),
-        _kv('Asignado a', a.assignedTo ?? '—'),
-        _kv('Registrado', a.createdAt.toString().substring(0, 16)),
-      ]),
-      _card('Compra y garantía', [
-        _kv('Fecha compra', a.purchaseDate == null ? '—' : dateToApi(a.purchaseDate)!),
-        _kv('Costo', a.cost == null ? '—' : '\$${a.cost!.toStringAsFixed(2)}'),
-        _kv('Proveedor', a.supplier ?? '—'),
-        _kv('Factura', a.invoiceNumber ?? '—'),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(children: [
-            const SizedBox(width: 100, child: Text('Garantía', style: TextStyle(fontSize: 13, color: Colors.grey))),
-            if (a.warrantyUntil == null) const Text('—') else ...[Text(dateToApi(a.warrantyUntil)!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)), const SizedBox(width: 10), _warrantyChip(a.warrantyUntil!)],
-          ]),
-        ),
-      ]),
-      if (a.specs.isNotEmpty) _card('Datos técnicos', a.specs.entries.map((e) => _kv(e.key, e.value)).toList()),
-      if (a.notes != null && a.notes!.isNotEmpty) _card('Notas', [Text(a.notes!, style: const TextStyle(fontSize: 14, height: 1.5))]),
+  Widget _wrap(Widget child, {double max = 1000}) {
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    return ListView(padding: EdgeInsets.all(wide ? 32 : 20), children: [
+      Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: max), child: child)),
     ]);
   }
 
+  Widget _detalles() {
+    final a = _asset!;
+    final c = context.sw;
+    final cats = ref.watch(categoriasListProvider).valueOrNull ?? const <Category>[];
+    final cat = cats.where((x) => x.id == a.categoryId).firstOrNull;
+    final consumible = cat != null && !cat.requiresSn; // cables, toners… (sin S/N)
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+
+    final header = Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(a.assetTag, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1.2))),
+          StatusTag(status: a.status, draft: a.isDraft),
+        ]),
+        const SizedBox(height: 4),
+        Text('${a.category} · ${a.brand} ${a.model}', style: TextStyle(fontSize: 15, color: c.muted)),
+      ]),
+    );
+
+    final draftBanner = a.isDraft
+        ? Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: c.panel, border: Border(left: BorderSide(color: c.accent, width: 3))),
+            child: Row(children: [
+              const Expanded(child: Text('Este equipo está guardado como borrador. Aún no se ha finalizado el registro.', style: TextStyle(fontWeight: FontWeight.w500))),
+              const SizedBox(width: 12),
+              FilledButton(onPressed: _finalizarBorrador, child: const Text('Finalizar registro')),
+            ]),
+          )
+        : const SizedBox.shrink();
+
+    final info = SwissSection('Información', [
+      Kv('Categoría', a.category),
+      Kv('Marca', a.brand),
+      Kv('Modelo', a.model),
+      Kv('S/N', a.serialNumber ?? 'N/A'),
+      Kv.widget(
+        'Cantidad',
+        Row(children: [
+          Text('${a.quantity} ${a.unit}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          if (consumible) ...[const SizedBox(width: 12), _stockBtn(Icons.remove, -1), const SizedBox(width: 6), _stockBtn(Icons.add, 1)],
+        ]),
+      ),
+      Kv('Ubicación', a.location ?? '—'),
+      Kv('Estado', a.status ?? '—'),
+      Kv('Asignado a', a.assignedTo ?? '—'),
+      Kv('Registrado', a.createdAt.toString().substring(0, 16)),
+    ]);
+
+    final compra = SwissSection('Compra y garantía', [
+      Kv('Fecha compra', a.purchaseDate == null ? '—' : dateToApi(a.purchaseDate)!),
+      Kv('Costo', a.cost == null ? '—' : '\$${a.cost!.toStringAsFixed(2)}'),
+      Kv('Proveedor', a.supplier ?? '—'),
+      Kv('Factura', a.invoiceNumber ?? '—'),
+      Kv.widget(
+        'Garantía',
+        a.warrantyUntil == null
+            ? const Text('—')
+            : Row(children: [
+                Text(dateToApi(a.warrantyUntil)!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                const SizedBox(width: 10),
+                _warrantyChip(a.warrantyUntil!),
+              ]),
+      ),
+    ]);
+
+    final right = <Widget>[
+      compra,
+      if (a.specs.isNotEmpty) SwissSection('Datos técnicos', a.specs.entries.map((e) => Kv(e.key, e.value)).toList()),
+      if ((a.notes ?? '').isNotEmpty) SwissSection('Notas', [Text(a.notes!, style: const TextStyle(fontSize: 14, height: 1.5))]),
+    ];
+
+    return _wrap(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      header,
+      draftBanner,
+      _galeria(),
+      if (wide)
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: info),
+          const SizedBox(width: 48),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: right)),
+        ])
+      else ...[info, ...right],
+    ]));
+  }
+
+  Widget _stockBtn(IconData icon, int n) => IconButton.outlined(
+        visualDensity: VisualDensity.compact,
+        iconSize: 16,
+        icon: Icon(icon),
+        tooltip: n > 0 ? 'Sumar 1 (ingreso)' : 'Restar 1 (uso)',
+        onPressed: () => _ajustar(n),
+      );
+
   Widget _warrantyChip(DateTime d) {
+    final c = context.sw;
     final days = d.difference(DateTime.now()).inDays;
-    final (txt, color) = days < 0 ? ('Vencida', Colors.red) : (days <= 60 ? ('Vence en $days días', Colors.orange) : ('Vigente', Colors.green));
+    final (txt, col) = days < 0 ? ('Vencida', c.bad) : (days <= 60 ? ('Vence en $days días', c.warn) : ('Vigente', c.ok));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-      child: Text(txt, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(border: Border.all(color: col), borderRadius: BorderRadius.circular(2)),
+      child: Text(txt.toUpperCase(), style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+    );
+  }
+
+  Widget _galeria() {
+    final imgs = _asset!.images;
+    final c = context.sw;
+    return SwissSection(
+      'Fotos',
+      [
+        if (imgs.isEmpty)
+          Text('Sin fotos', style: TextStyle(color: c.muted))
+        else
+          SizedBox(
+            height: 150,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: imgs.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) => Stack(children: [
+                GestureDetector(
+                  onTap: () => _showImageDialog(imgs[i].url),
+                  child: ClipRRect(borderRadius: BorderRadius.circular(2), child: Image.network(imgs[i].url, width: 200, height: 150, fit: BoxFit.cover)),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Material(
+                    color: c.ink,
+                    child: InkWell(onTap: () => _eliminarImagen(imgs[i]), child: Padding(padding: const EdgeInsets.all(5), child: Icon(Icons.close, size: 16, color: c.bg))),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+      ],
+      trailing: TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 18), label: const Text('Agregar')),
     );
   }
 
   Widget _asignaciones() {
     final a = _asset!;
+    final c = context.sw;
     final vigente = _assignments.where((x) => x.returnedAt == null).firstOrNull;
-    return ListView(padding: const EdgeInsets.all(24), children: [
-      _card('Custodio actual', [
-        if (a.assignedTo == null)
-          const Padding(padding: EdgeInsets.only(bottom: 12), child: Text('Sin asignar', style: TextStyle(color: Colors.grey)))
-        else
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: Text(a.assignedTo!, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: vigente == null ? null : Text('Desde ${vigente.assignedAt.toString().substring(0, 16)} · entregó ${vigente.deliveredBy}'),
-          ),
-        Row(children: [
-          FilledButton.icon(onPressed: _asignar, icon: const Icon(Icons.person_add_alt, size: 18), label: Text(a.assignedTo == null ? 'Asignar' : 'Reasignar')),
-          const SizedBox(width: 8),
-          if (a.assignedTo != null) OutlinedButton.icon(onPressed: _devolver, icon: const Icon(Icons.keyboard_return, size: 18), label: const Text('Devolver')),
-        ]),
-      ]),
-      _card('Historial de custodia', [
-        if (_assignments.isEmpty) const Text('Sin movimientos', style: TextStyle(color: Colors.grey)),
-        ..._assignments.map((x) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(x.returnedAt == null ? Icons.radio_button_checked : Icons.history, color: x.returnedAt == null ? Colors.green : Colors.grey),
-              title: Text(x.employeeName, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text([
-                '${x.assignedAt.toString().substring(0, 10)} → ${x.returnedAt?.toString().substring(0, 10) ?? 'vigente'}',
-                if (x.notes != null) 'Entrega: ${x.notes}',
-                if (x.returnNotes != null) 'Devolución: ${x.returnNotes}',
-              ].join('\n')),
-              isThreeLine: x.notes != null || x.returnNotes != null,
-            )),
-      ]),
-    ]);
-  }
-
-  Widget _historial() => _history.isEmpty
-      ? const Center(child: Text('Sin cambios registrados'))
-      : ListView.separated(
-          padding: const EdgeInsets.all(24), itemCount: _history.length, separatorBuilder: (_, __) => const Divider(),
-          itemBuilder: (_, i) {
-            final h = _history[i];
-            final esRegistro = h.fieldName == 'registro';
-            return ListTile(
-              leading: const Icon(Icons.history, color: Colors.blue),
-              title: Text(esRegistro ? (h.newValue ?? 'Registro') : 'Cambió: ${h.fieldName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: esRegistro ? Text('Por ${h.changedBy}') : Text('De: ${h.oldValue ?? "vacío"} a: ${h.newValue ?? "vacío"}\nPor ${h.changedBy}'),
-              trailing: Text(h.changedAt.toString().substring(0, 16), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            );
-          },
-        );
-
-  Widget _galeriaFotos() {
-    final imgs = _asset!.images;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: _border)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Expanded(child: Text('FOTOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _muted, letterSpacing: 0.8))),
-            TextButton.icon(onPressed: _agregarImagenes, icon: const Icon(Icons.add_a_photo_outlined, size: 18), label: const Text('Agregar')),
-          ]),
-          if (imgs.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text('Sin fotos', style: TextStyle(color: Colors.grey, fontSize: 13))))
+    return _wrap(
+      max: 800,
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SwissSection('Custodio actual', [
+          if (a.assignedTo == null)
+            Padding(padding: const EdgeInsets.only(bottom: 16), child: Text('Sin asignar', style: TextStyle(color: c.muted)))
           else
-            SizedBox(
-              height: 140,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal, itemCount: imgs.length, separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, i) => Stack(children: [
-                  GestureDetector(
-                    onTap: () => _showImageDialog(imgs[i].url),
-                    child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imgs[i].url, width: 180, height: 140, fit: BoxFit.cover)),
-                  ),
-                  Positioned(
-                    top: 6, right: 6,
-                    child: Material(
-                      color: Colors.redAccent, shape: const CircleBorder(),
-                      child: InkWell(customBorder: const CircleBorder(), onTap: () => _eliminarImagen(imgs[i]), child: const Padding(padding: EdgeInsets.all(6), child: Icon(Icons.delete, size: 16, color: Colors.white))),
-                    ),
-                  ),
-                ]),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(a.assignedTo!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                if (vigente != null)
+                  Text('Desde ${vigente.assignedAt.toString().substring(0, 16)} · entregó ${vigente.deliveredBy}', style: TextStyle(fontSize: 13, color: c.muted)),
+              ]),
+            ),
+          Row(children: [
+            FilledButton.icon(onPressed: _asignar, icon: const Icon(Icons.person_add_alt, size: 18), label: Text(a.assignedTo == null ? 'Asignar' : 'Reasignar')),
+            const SizedBox(width: 8),
+            if (a.assignedTo != null) OutlinedButton.icon(onPressed: _devolver, icon: const Icon(Icons.keyboard_return, size: 18), label: const Text('Devolver')),
+          ]),
+        ]),
+        SwissSection('Historial de custodia', [
+          if (_assignments.isEmpty) Text('Sin movimientos', style: TextStyle(color: c.muted)),
+          for (final x in _assignments)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(
+                  width: 170,
+                  child: Text('${x.assignedAt.toString().substring(0, 10)} → ${x.returnedAt?.toString().substring(0, 10) ?? 'vigente'}',
+                      style: TextStyle(fontSize: 12, color: x.returnedAt == null ? c.ok : c.muted, fontWeight: FontWeight.w600)),
+                ),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(x.employeeName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (x.notes != null) Text('Entrega: ${x.notes}', style: TextStyle(fontSize: 13, color: c.muted)),
+                    if (x.returnNotes != null) Text('Devolución: ${x.returnNotes}', style: TextStyle(fontSize: 13, color: c.muted)),
+                  ]),
+                ),
+              ]),
             ),
         ]),
-      ),
+      ]),
     );
   }
 
-  Widget _card(String title, List<Widget> children) => Card(
-        elevation: 0, margin: const EdgeInsets.only(bottom: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: _border)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _muted, letterSpacing: 0.8)),
-            const SizedBox(height: 16),
-            ...children,
-          ]),
-        ),
-      );
-
-  Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(children: [
-          SizedBox(width: 100, child: Text(k, style: const TextStyle(fontSize: 13, color: Colors.grey))),
-          Expanded(child: Text(v, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
-        ]),
-      );
-
-  Widget _kvWidget(String k, Widget v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(children: [
-          SizedBox(width: 100, child: Text(k, style: const TextStyle(fontSize: 13, color: Colors.grey))),
-          Expanded(child: v),
-        ]),
-      );
+  Widget _historial() {
+    final c = context.sw;
+    if (_history.isEmpty) return const Center(child: Text('Sin cambios registrados'));
+    return _wrap(
+      max: 900,
+      Column(children: [
+        for (final h in _history)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 130, child: Text(h.changedAt.toString().substring(0, 16), style: TextStyle(fontSize: 12, color: c.muted))),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(h.fieldName == 'registro' ? (h.newValue ?? 'Registro') : 'Cambió ${h.fieldName}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    h.fieldName == 'registro' ? 'Por ${h.changedBy}' : 'De: ${h.oldValue ?? "vacío"} a: ${h.newValue ?? "vacío"} · ${h.changedBy}',
+                    style: TextStyle(fontSize: 13, color: c.muted),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
 }

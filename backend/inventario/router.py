@@ -2,7 +2,7 @@
 import os
 import re
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -360,6 +360,28 @@ def etiquetas(tags: str | None = None, session: Session = Depends(get_session)):
     )
 
 
+# ---- limpieza de borradores
+@router.delete("/borradores")
+def limpiar_borradores(dias: int = Query(7, ge=0, le=365), session: Session = Depends(get_session)):
+    """Elimina definitivamente los borradores sin finalizar con más de N días."""
+    limite = datetime.now(timezone.utc) - timedelta(days=dias)
+    borradores = session.exec(
+        select(ItAsset).where(ItAsset.is_draft == True, ItAsset.created_at < limite)  # noqa: E712
+    ).all()
+    for a in borradores:
+        for img in a.images:
+            p = UPLOADS_DIR / img.filename
+            if p.exists():
+                p.unlink()
+        for h in session.exec(select(ItAssetHistory).where(ItAssetHistory.asset_id == a.id)).all():
+            session.delete(h)
+        for x in session.exec(select(ItAssetAssignment).where(ItAssetAssignment.asset_id == a.id)).all():
+            session.delete(x)
+        session.delete(a)
+    session.commit()
+    return {"eliminados": len(borradores)}
+
+
 # ---- papelera
 @router.get("/papelera", response_model=list[ItAssetRead])
 def papelera(session: Session = Depends(get_session)):
@@ -409,6 +431,7 @@ def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user:
             for k, v in payload.model_dump(exclude_unset=True).items():
                 setattr(existente, k, v)
             existente.is_draft = False
+            _validate_sn(session, existente)
             session.add(existente)
             session.commit()
             session.refresh(existente)

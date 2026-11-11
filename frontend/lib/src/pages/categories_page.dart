@@ -32,14 +32,14 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
+                  TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre')),
                   const SizedBox(height: 12),
-                  TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)', border: OutlineInputBorder())),
+                  TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo (Ej: HDMI)')),
                   const SizedBox(height: 12),
-                  TextField(controller: specCtrl, decoration: const InputDecoration(labelText: 'Campos técnicos (separados por coma)', hintText: 'CPU, RAM, Disco, IP, MAC', border: OutlineInputBorder())),
+                  TextField(controller: specCtrl, decoration: const InputDecoration(labelText: 'Campos técnicos (separados por coma)', hintText: 'CPU, RAM, Disco, IP, MAC')),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: unit, decoration: const InputDecoration(labelText: 'Unidad por defecto', border: OutlineInputBorder()),
+                    value: unit, decoration: const InputDecoration(labelText: 'Unidad por defecto'),
                     items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (v) => setModalState(() => unit = v!),
                   ),
@@ -48,7 +48,7 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
                     loading: () => const LinearProgressIndicator(),
                     error: (e, _) => Text('Error: $e'),
                     data: (cats) => DropdownButtonFormField<int?>(
-                      value: parentId, decoration: const InputDecoration(labelText: 'Categoría Padre (Opcional)', border: OutlineInputBorder()),
+                      value: parentId, decoration: const InputDecoration(labelText: 'Categoría Padre (Opcional)'),
                       items: [
                         const DropdownMenuItem(value: null, child: Text('Ninguna (Es Principal)')),
                         ...cats.where((c) => c.id != category?.id).map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
@@ -96,10 +96,9 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
     final asyncCats = ref.watch(categoriasListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
         title: const Text('Categorías y Subcategorías'),
-        backgroundColor: Colors.white, elevation: 0.5,
+        elevation: 0.5,
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/inventario')),
         actions: [
           Padding(
@@ -145,7 +144,6 @@ class _CategoriesPageState extends ConsumerState<CategoriesPage> {
                         return Card(
                           elevation: 0,
                           margin: const EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
                           child: ExpansionTile(
                             leading: const Icon(Icons.folder_outlined, color: Colors.blue, size: 28),
                             title: Text(root.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

@@ -1,13 +1,16 @@
 """Catálogos (ubicaciones, empleados) y dashboard."""
-from datetime import date
+from datetime import date, datetime
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from fpdf import FPDF
 from sqlmodel import Session, select
 
 from .common import location_paths
 from .db import get_session
 from .models import Employee, ItAsset, ItAssetAssignment, Location
-from .schemas import EmployeeCreate, EmployeeRead, LocationCreate, LocationRead
+from .schemas import EmployeeCreate, EmployeeRead, ItAssetRead, LocationCreate, LocationRead
 
 router = APIRouter()
 
@@ -257,3 +260,113 @@ def dashboard(session: Session = Depends(get_session)):
         "por_categoria": dict(sorted(por_categoria.items(), key=lambda kv: -kv[1])),
         "por_ubicacion": dict(sorted(por_ubicacion.items(), key=lambda kv: -kv[1])[:8]),
     }
+
+
+# ------------------------------------------------------------------ ficha de empleado
+def _emp_or_404(session: Session, emp_id: int) -> Employee:
+    emp = session.get(Employee, emp_id)
+    if not emp:
+        raise HTTPException(404, detail="Empleado no encontrado")
+    return emp
+
+
+def _assigned(session: Session, emp_id: int) -> list[ItAsset]:
+    return list(session.exec(
+        select(ItAsset).where(ItAsset.employee_id == emp_id, ItAsset.deleted_at.is_(None)).order_by(ItAsset.asset_tag)
+    ).all())
+
+
+def _emp_dict(e: Employee, count: int) -> dict:
+    return {"id": e.id, "name": e.name, "email": e.email, "department": e.department, "active": e.active, "asset_count": count}
+
+
+def _latin(s) -> str:
+    return str(s).encode("latin-1", "replace").decode("latin-1")
+
+
+# IMPORTANTE: /overview va antes que /{emp_id}
+@router.get("/employees/overview")
+def empleados_overview(session: Session = Depends(get_session)):
+    counts: dict[int, int] = {}
+    for a in session.exec(select(ItAsset).where(
+        ItAsset.employee_id.is_not(None), ItAsset.deleted_at.is_(None), ItAsset.is_draft == False  # noqa: E712
+    )).all():
+        counts[a.employee_id] = counts.get(a.employee_id, 0) + 1
+    emps = session.exec(select(Employee).order_by(Employee.name)).all()
+    return [_emp_dict(e, counts.get(e.id, 0)) for e in emps]
+
+
+@router.get("/employees/{emp_id}")
+def empleado(emp_id: int, session: Session = Depends(get_session)):
+    e = _emp_or_404(session, emp_id)
+    return _emp_dict(e, len([a for a in _assigned(session, emp_id) if not a.is_draft]))
+
+
+@router.get("/employees/{emp_id}/assets", response_model=list[ItAssetRead])
+def empleado_activos(emp_id: int, session: Session = Depends(get_session)):
+    _emp_or_404(session, emp_id)
+    return [a for a in _assigned(session, emp_id) if not a.is_draft]
+
+
+@router.get("/employees/{emp_id}/history")
+def empleado_historial(emp_id: int, session: Session = Depends(get_session)):
+    _emp_or_404(session, emp_id)
+    rows = session.exec(
+        select(ItAssetAssignment).where(ItAssetAssignment.employee_id == emp_id).order_by(ItAssetAssignment.assigned_at.desc())
+    ).all()
+    ids = {r.asset_id for r in rows}
+    assets = {a.id: a for a in session.exec(select(ItAsset).where(ItAsset.id.in_(ids))).all()} if ids else {}
+    out = []
+    for r in rows:
+        a = assets.get(r.asset_id)
+        out.append({
+            "asset_tag": a.asset_tag if a else "(eliminado)",
+            "equipo": f"{a.category} {a.brand} {a.model}".strip() if a else "",
+            "assigned_at": r.assigned_at.isoformat(),
+            "returned_at": r.returned_at.isoformat() if r.returned_at else None,
+            "delivered_by": r.delivered_by,
+            "notes": r.notes,
+            "return_notes": r.return_notes,
+        })
+    return out
+
+
+@router.get("/employees/{emp_id}/pdf")
+def empleado_acta(emp_id: int, session: Session = Depends(get_session)):
+    emp = _emp_or_404(session, emp_id)
+    assets = [a for a in _assigned(session, emp_id) if not a.is_draft]
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=16, style="B")
+    pdf.cell(190, 10, txt=_latin("Acta de Entrega de Equipos TI"), ln=True, align="C")
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(190, 8, txt=_latin(f"Fecha: {datetime.now():%d/%m/%Y %H:%M}"), ln=True, align="C")
+    pdf.ln(6)
+    pdf.set_font("Helvetica", size=12)
+    pdf.cell(190, 8, txt=_latin(f"Empleado: {emp.name}"), ln=True)
+    if emp.department:
+        pdf.cell(190, 8, txt=_latin(f"Departamento: {emp.department}"), ln=True)
+    pdf.ln(4)
+    widths = (28, 82, 48, 32)
+    pdf.set_font("Helvetica", size=10, style="B")
+    for w, h in zip(widths, ("Tag", "Equipo", "S/N", "Cantidad")):
+        pdf.cell(w, 8, txt=h, border=1)
+    pdf.ln(8)
+    pdf.set_font("Helvetica", size=10)
+    if not assets:
+        pdf.cell(190, 8, txt="Sin equipos asignados", border=1, ln=True)
+    for a in assets:
+        vals = (a.asset_tag, f"{a.category} {a.brand} {a.model}", a.serial_number or "N/A", f"{a.quantity} {a.unit}")
+        for w, v in zip(widths, vals):
+            pdf.cell(w, 8, txt=_latin(v)[: int(w / 2)], border=1)
+        pdf.ln(8)
+    pdf.ln(30)
+    pdf.set_font("Helvetica", size=12)
+    pdf.cell(95, 10, txt="_________________________", ln=False)
+    pdf.cell(95, 10, txt="_________________________", ln=True)
+    pdf.cell(95, 10, txt="Firma Responsable TI", ln=False)
+    pdf.cell(95, 10, txt="Firma de Recibido", ln=True)
+    raw = pdf.output(dest="S")
+    data = raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
+    return StreamingResponse(BytesIO(data), media_type="application/pdf",
+                             headers={"Content-Disposition": f"attachment; filename=acta_empleado_{emp.id}.pdf"})

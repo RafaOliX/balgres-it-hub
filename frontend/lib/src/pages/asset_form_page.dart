@@ -50,7 +50,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       c.addListener(_markChanged);
     }
     _autosaveTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (_hasChanges && !_saving && _tag.text.isNotEmpty && _selectedCategory != null) _saveDraftSilently();
+      if (_hasChanges && !_saving && _tag.text.isNotEmpty && _selectedCategory != null &&
+          (_brand.text.trim().isNotEmpty || _model.text.trim().isNotEmpty || _serial.text.trim().isNotEmpty)) {
+        _saveDraftSilently();
+      }
     });
   }
 
@@ -142,12 +145,12 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
           title: const Text('Nueva Categoría'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder())),
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre')),
               const SizedBox(height: 12),
-              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo', border: OutlineInputBorder())),
+              TextField(controller: prefixCtrl, decoration: const InputDecoration(labelText: 'Prefijo')),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: unit, decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()),
+                value: unit, decoration: const InputDecoration(labelText: 'Unidad'),
                 items: ['Unidad', 'Metro', 'Caja', 'Rollo'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setModalState(() => unit = v!),
               ),
@@ -239,9 +242,8 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   Widget build(BuildContext context) {
     final categoriasAsync = ref.watch(categoriasListProvider);
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        title: const Text('Nuevo activo'), backgroundColor: Colors.white, elevation: 0.5,
+        title: const Text('Nuevo activo'), elevation: 0.5,
         actions: [if (_autoSaved) const Padding(padding: EdgeInsets.only(right: 16), child: Center(child: Text('Borrador guardado', style: TextStyle(color: Colors.green, fontSize: 12))))],
       ),
       body: Center(
@@ -263,7 +265,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   ),
                   child: Container(
                     height: 120, width: double.infinity,
-                    decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
                     child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 32), SizedBox(height: 8), Text('Agregar fotos', style: TextStyle(color: Colors.grey))]),
                   ),
                 ),
@@ -294,7 +296,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                       error: (e, _) => Text('Error: $e'),
                       data: (cats) => DropdownButtonFormField<int>(
                         value: _selectedCategory?.id, isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Categoría *', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: 'Categoría *'),
                         items: cats.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
                         onChanged: (id) => _onCategorySelected(cats.where((c) => c.id == id).firstOrNull),
                         validator: (v) => v == null ? 'Requerido' : null,
@@ -310,7 +312,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                     child: TextFormField(
                       controller: _tag, readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Asset Tag (Automático)', border: const OutlineInputBorder(), filled: true, fillColor: Colors.grey[50],
+                        labelText: 'Asset Tag (Automático)', filled: true,
                         suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
                       ),
                     ),
@@ -322,21 +324,21 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _serial,
-                    decoration: const InputDecoration(labelText: 'N/S *', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'N/S *'),
                   ),
                 ],
               ]),
               FormSection('Detalles del equipo', [
                 Row(children: [
-                  Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca', border: OutlineInputBorder()))),
+                  Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
                   const SizedBox(width: 16),
-                  Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()))),
+                  Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
                 ]),
                 const SizedBox(height: 16),
                 Row(children: [
-                  Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad', border: OutlineInputBorder()))),
+                  Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
                   const SizedBox(width: 16),
-                  Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()), child: Text(_unit))),
+                  Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))),
                 ]),
               ]),
               FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls)]),
@@ -352,12 +354,12 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 LocationDropdown(value: _locationId, onChanged: (v) => setState(() { _locationId = v; _hasChanges = true; })),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _status, decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
+                  value: _status, decoration: const InputDecoration(labelText: 'Estado'),
                   items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                   onChanged: (v) => setState(() { _status = v!; _hasChanges = true; }),
                 ),
                 const SizedBox(height: 16),
-                TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 3),
+                TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 3),
                 const SizedBox(height: 8),
                 const Text('El responsable se asigna desde el detalle del activo (pestaña Asignaciones).', style: TextStyle(color: Colors.grey, fontSize: 12)),
               ]),
@@ -366,7 +368,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 height: 50,
                 child: FilledButton(
                   onPressed: (_saving || _cargandoTag) ? null : _submit,
-                  child: _saving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar y Finalizar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: _saving ? const Text('Guardando…', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)) : const Text('Guardar y Finalizar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(height: 40),

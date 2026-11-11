@@ -14,9 +14,8 @@ class CatalogosPage extends StatelessWidget {
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
         child: Scaffold(
-          backgroundColor: const Color(0xFFF3F4F6),
           appBar: AppBar(
-            title: const Text('Empleados y ubicaciones'), backgroundColor: Colors.white, elevation: 0.5,
+            title: const Text('Empleados y ubicaciones'), elevation: 0.5,
             bottom: const TabBar(tabs: [Tab(text: 'Empleados'), Tab(text: 'Ubicaciones')]),
           ),
           body: const TabBarView(children: [_EmpleadosTab(), _UbicacionesTab()]),
@@ -42,11 +41,11 @@ class _EmpleadosTab extends ConsumerWidget {
             width: 400,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *', border: OutlineInputBorder())),
+                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *')),
                 const SizedBox(height: 12),
-                TextField(controller: email, decoration: const InputDecoration(labelText: 'Correo', border: OutlineInputBorder())),
+                TextField(controller: email, decoration: const InputDecoration(labelText: 'Correo')),
                 const SizedBox(height: 12),
-                TextField(controller: dept, decoration: const InputDecoration(labelText: 'Departamento', border: OutlineInputBorder())),
+                TextField(controller: dept, decoration: const InputDecoration(labelText: 'Departamento')),
                 SwitchListTile(title: const Text('Activo'), value: active, onChanged: (v) => setM(() => active = v)),
               ]),
             ),
@@ -115,7 +114,6 @@ class _EmpleadosTab extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final e = list[i];
                     return ListTile(
-                      tileColor: Colors.white,
                       leading: CircleAvatar(child: Text(e.name.isEmpty ? '?' : e.name[0].toUpperCase())),
                       title: Text(e.name, style: TextStyle(color: e.active ? null : Colors.grey)),
                       subtitle: Text([e.department, e.email, if (!e.active) 'Inactivo'].whereType<String>().join(' · ')),
@@ -160,17 +158,17 @@ class _UbicacionesTab extends ConsumerWidget {
             width: 400,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *', border: OutlineInputBorder())),
+                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *')),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: kind, decoration: const InputDecoration(labelText: 'Tipo', border: OutlineInputBorder()),
+                  value: kind, decoration: const InputDecoration(labelText: 'Tipo'),
                   items: [const DropdownMenuItem<String?>(value: null, child: Text('—')), ...kinds.map((k) => DropdownMenuItem<String?>(value: k, child: Text(k)))],
                   onChanged: (v) => setM(() => kind = v),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<int?>(
                   value: all.any((l) => l.id == parentId) ? parentId : null, isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Dentro de (opcional)', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Dentro de (opcional)'),
                   items: [
                     const DropdownMenuItem<int?>(value: null, child: Text('Ninguna (nivel principal)')),
                     ...all.where((l) => l.id != loc?.id).map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.fullName, overflow: TextOverflow.ellipsis))),
@@ -245,7 +243,6 @@ class _UbicacionesTab extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final l = list[i];
                     return ListTile(
-                      tileColor: Colors.white,
                       leading: const Icon(Icons.place_outlined, color: Colors.blue),
                       title: Text(l.fullName),
                       subtitle: l.kind == null ? null : Text(l.kind!),

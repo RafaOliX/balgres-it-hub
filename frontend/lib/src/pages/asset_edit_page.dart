@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../data/inventario_api.dart';
 import '../data/providers.dart';
 import '../models/it_asset.dart';
+import '../ui/swiss.dart';
 import '../widgets/form_fields.dart';
 
 class AssetEditPage extends ConsumerStatefulWidget {
@@ -23,25 +23,32 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
   bool _locTouched = false;
   DateTime? _purchaseDate, _warrantyUntil;
   bool _saving = false;
+  bool _dirty = false;
   String? _error;
+
+  void _touch() {
+    if (!_dirty && mounted) setState(() => _dirty = true);
+  }
+
+  TextEditingController _ctrl(String? text) => TextEditingController(text: text ?? '')..addListener(_touch);
 
   @override
   void initState() {
     super.initState();
     final a = widget.asset;
-    _brand = TextEditingController(text: a.brand);
-    _model = TextEditingController(text: a.model);
-    _serial = TextEditingController(text: a.serialNumber);
-    _notes = TextEditingController(text: a.notes);
-    _quantity = TextEditingController(text: a.quantity.toString());
-    _cost = TextEditingController(text: a.cost?.toString() ?? '');
-    _supplier = TextEditingController(text: a.supplier);
-    _invoice = TextEditingController(text: a.invoiceNumber);
+    _brand = _ctrl(a.brand);
+    _model = _ctrl(a.model);
+    _serial = _ctrl(a.serialNumber);
+    _notes = _ctrl(a.notes);
+    _quantity = _ctrl(a.quantity.toString());
+    _cost = _ctrl(a.cost?.toString());
+    _supplier = _ctrl(a.supplier);
+    _invoice = _ctrl(a.invoiceNumber);
     _status = a.status ?? 'Operativo';
     _locationId = a.locationId;
     _purchaseDate = a.purchaseDate;
     _warrantyUntil = a.warrantyUntil;
-    a.specs.forEach((k, v) => _specCtrls[k] = TextEditingController(text: v));
+    a.specs.forEach((k, v) => _specCtrls[k] = _ctrl(v));
     _loadCategoryFields();
   }
 
@@ -52,7 +59,7 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
       if (cat != null && mounted) {
         setState(() {
           for (final f in cat.specFields) {
-            _specCtrls.putIfAbsent(f, () => TextEditingController());
+            _specCtrls.putIfAbsent(f, () => _ctrl(null));
           }
         });
       }
@@ -67,8 +74,9 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_form.currentState!.validate()) return;
+  /// Devuelve true si guardó.
+  Future<bool> _submit() async {
+    if (!_form.currentState!.validate()) return false;
     setState(() {
       _saving = true;
       _error = null;
@@ -91,80 +99,158 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
       if (_locTouched) body['location_id'] = _locationId;
       await ref.read(inventarioApiProvider).actualizar(widget.asset.assetTag, body);
       ref.invalidate(inventarioListProvider);
-      if (mounted) context.pop();
+      _dirty = false;
+      if (mounted) Navigator.of(context).pop();
+      return true;
     } catch (e) {
-      setState(() => _error = apiError(e));
+      if (mounted) setState(() => _error = apiError(e));
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _onBackBlocked() async {
+    final r = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.edit_note, color: context.sw.accent, size: 36),
+        title: const Text('Tienes cambios sin guardar'),
+        content: Text('Hiciste cambios en ${widget.asset.assetTag} que aún no se guardan. ¿Qué quieres hacer?'),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(style: TextButton.styleFrom(foregroundColor: context.sw.bad), onPressed: () => Navigator.pop(ctx, 'discard'), child: const Text('Salir sin guardar')),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            TextButton(onPressed: () => Navigator.pop(ctx, 'stay'), child: const Text('Seguir editando')),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Guardar')),
+          ]),
+        ],
+      ),
+    );
+    if (r == 'discard') {
+      _dirty = false;
+      if (mounted) Navigator.of(context).pop();
+    } else if (r == 'save') {
+      await _submit();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final a = widget.asset;
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
-      appBar: AppBar(title: Text('Editar ${a.assetTag}'), backgroundColor: Colors.white, elevation: 0.5),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: Form(
-            key: _form,
-            child: ListView(padding: const EdgeInsets.all(24), children: [
-              if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 16), child: Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
-              FormSection('Identificación', [
-                TextFormField(initialValue: a.assetTag, readOnly: true, decoration: const InputDecoration(labelText: 'Asset Tag (no editable)', border: OutlineInputBorder(), filled: true)),
-                const SizedBox(height: 16),
-                TextFormField(initialValue: a.category, readOnly: true, decoration: const InputDecoration(labelText: 'Categoría (no editable)', border: OutlineInputBorder(), filled: true)),
-                const SizedBox(height: 16),
-                TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N', border: OutlineInputBorder())),
-              ]),
-              FormSection('Detalles del equipo', [
-                Row(children: [
-                  Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca', border: OutlineInputBorder()))),
-                  const SizedBox(width: 16),
-                  Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo', border: OutlineInputBorder()))),
-                ]),
-                const SizedBox(height: 16),
-                Row(children: [
-                  Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad', border: OutlineInputBorder()))),
-                  const SizedBox(width: 16),
-                  Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad', border: OutlineInputBorder()), child: Text(a.unit))),
-                ]),
-              ]),
-              FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls)]),
-              FormSection('Compra y garantía', [
-                PurchaseFields(
-                  purchaseDate: _purchaseDate, warrantyUntil: _warrantyUntil,
-                  onPurchase: (d) => setState(() => _purchaseDate = d), onWarranty: (d) => setState(() => _warrantyUntil = d),
-                  cost: _cost, supplier: _supplier, invoice: _invoice,
-                ),
-              ]),
-              FormSection('Ubicación y estado', [
-                if (a.locationId == null && a.location != null)
-                  Padding(padding: const EdgeInsets.only(bottom: 12), child: Text('Ubicación actual (texto libre): ${a.location}. Elige una del catálogo o usa "Unificar desde activos" en Catálogos.', style: const TextStyle(color: Colors.orange, fontSize: 12))),
-                LocationDropdown(value: _locationId, onChanged: (v) => setState(() { _locationId = v; _locTouched = true; })),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _status, decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
-                  items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (v) => setState(() => _status = v!),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas', border: OutlineInputBorder()), maxLines: 3),
-                const SizedBox(height: 8),
-                const Text('Para cambiar el responsable usa la pestaña Asignaciones del detalle.', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              ]),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 50,
-                child: FilledButton(
-                  onPressed: _saving ? null : _submit,
-                  child: _saving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar cambios', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
+    final c = context.sw;
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBackBlocked();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Editar ${a.assetTag}'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _submit,
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: const Text('Guardar'),
               ),
-              const SizedBox(height: 40),
-            ]),
+            ),
+          ],
+        ),
+        bottomNavigationBar: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(color: c.bg, border: Border(top: BorderSide(color: c.line)), boxShadow: softShadow(context)),
+          child: SafeArea(
+            top: false,
+            child: Align(
+              heightFactor: 1,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Row(children: [
+                  if (_dirty) ...[
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: c.warn, shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                    Text('Cambios sin guardar', style: TextStyle(color: c.muted, fontSize: 13)),
+                  ],
+                  const Spacer(),
+                  OutlinedButton(onPressed: _saving ? null : () => Navigator.of(context).maybePop(), child: const Text('Cancelar')),
+                  const SizedBox(width: 10),
+                  FilledButton(
+                    onPressed: _saving ? null : _submit,
+                    child: Text(_saving ? 'Guardando…' : 'Guardar cambios'),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Form(
+              key: _form,
+              child: ListView(padding: const EdgeInsets.all(24), children: [
+                if (_error != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: c.bad.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: c.bad)),
+                    child: Text(_error!, style: TextStyle(color: c.bad, fontWeight: FontWeight.w600)),
+                  ),
+                FormSection('Identificación', [
+                  TextFormField(initialValue: a.assetTag, readOnly: true, decoration: const InputDecoration(labelText: 'Asset Tag (no editable)')),
+                  const SizedBox(height: 16),
+                  TextFormField(initialValue: a.category, readOnly: true, decoration: const InputDecoration(labelText: 'Categoría (no editable)')),
+                  const SizedBox(height: 16),
+                  TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'S/N')),
+                ]),
+                FormSection('Detalles del equipo', [
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
+                    const SizedBox(width: 16),
+                    Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
+                  ]),
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: _quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad'))),
+                    const SizedBox(width: 16),
+                    Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(a.unit))),
+                  ]),
+                ]),
+                FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls)]),
+                FormSection('Compra y garantía', [
+                  PurchaseFields(
+                    purchaseDate: _purchaseDate,
+                    warrantyUntil: _warrantyUntil,
+                    onPurchase: (d) => setState(() { _purchaseDate = d; _dirty = true; }),
+                    onWarranty: (d) => setState(() { _warrantyUntil = d; _dirty = true; }),
+                    cost: _cost, supplier: _supplier, invoice: _invoice,
+                  ),
+                ]),
+                FormSection('Ubicación y estado', [
+                  if (a.locationId == null && a.location != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text('Ubicación actual (texto libre): ${a.location}. Elige una del catálogo o usa "Unificar desde activos" en Catálogos.', style: TextStyle(color: c.warn, fontSize: 12)),
+                    ),
+                  LocationDropdown(value: _locationId, onChanged: (v) => setState(() { _locationId = v; _locTouched = true; _dirty = true; })),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _status,
+                    decoration: const InputDecoration(labelText: 'Estado'),
+                    items: ['Operativo', 'En Revisión', 'Retirado'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: (v) => setState(() { _status = v!; _dirty = true; }),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 3),
+                  const SizedBox(height: 8),
+                  Text('Para cambiar el responsable usa la pestaña Asignaciones del detalle.', style: TextStyle(color: c.muted, fontSize: 12)),
+                ]),
+                const SizedBox(height: 24),
+              ]),
+            ),
           ),
         ),
       ),

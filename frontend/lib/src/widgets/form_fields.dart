@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../ui/swiss.dart';
 
 class FormSection extends StatelessWidget {
   final String title;
@@ -9,19 +10,7 @@ class FormSection extends StatelessWidget {
   const FormSection(this.title, this.children, {super.key});
 
   @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(bottom: 24),
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE5E7EB))),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6B7280), letterSpacing: 0.8)),
-            const SizedBox(height: 20),
-            ...children,
-          ]),
-        ),
-      );
+  Widget build(BuildContext context) => SwissSection(title, children);
 }
 
 class DateField extends StatelessWidget {
@@ -42,7 +31,7 @@ class DateField extends StatelessWidget {
         },
         child: InputDecorator(
           decoration: InputDecoration(
-            labelText: label, border: const OutlineInputBorder(),
+            labelText: label,
             suffixIcon: value == null
                 ? const Icon(Icons.calendar_today, size: 18)
                 : IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => onChanged(null)),
@@ -68,7 +57,7 @@ class LocationDropdown extends ConsumerWidget {
         return DropdownButtonFormField<int?>(
           value: ids.contains(value) ? value : null,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Ubicación', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Ubicación'),
           items: [
             const DropdownMenuItem<int?>(value: null, child: Text('Sin ubicación')),
             ...locs.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.fullName, overflow: TextOverflow.ellipsis))),
@@ -102,12 +91,12 @@ class PurchaseFields extends StatelessWidget {
         ]),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Costo', prefixText: '\$ ', border: OutlineInputBorder()))),
+          Expanded(child: TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Costo', prefixText: '\$ '))),
           const SizedBox(width: 16),
-          Expanded(child: TextFormField(controller: supplier, decoration: const InputDecoration(labelText: 'Proveedor', border: OutlineInputBorder()))),
+          Expanded(child: TextFormField(controller: supplier, decoration: const InputDecoration(labelText: 'Proveedor'))),
         ]),
         const SizedBox(height: 16),
-        TextFormField(controller: invoice, decoration: const InputDecoration(labelText: 'N° de factura', border: OutlineInputBorder())),
+        TextFormField(controller: invoice, decoration: const InputDecoration(labelText: 'N° de factura')),
       ]);
 }
 
@@ -123,7 +112,7 @@ class SpecsFields extends StatelessWidget {
     return Wrap(
       spacing: 16, runSpacing: 16,
       children: ctrls.entries
-          .map((e) => SizedBox(width: 240, child: TextFormField(controller: e.value, decoration: InputDecoration(labelText: e.key, border: const OutlineInputBorder()))))
+          .map((e) => SizedBox(width: 240, child: TextFormField(controller: e.value, decoration: InputDecoration(labelText: e.key))))
           .toList(),
     );
   }
