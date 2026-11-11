@@ -6,6 +6,13 @@ import pytest
 from conftest import BASE, make_asset
 
 
+def _png() -> bytes:
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", (4, 4)).save(b, "PNG")
+    return b.getvalue()
+
+
 # ------------------------------------------------------------------ básicos
 def test_health(client):
     assert client.get(f"{BASE}/health").json()["status"] == "ok"
@@ -154,7 +161,7 @@ def test_imagenes_validan_tipo_y_tamano(client, cat):
     assert client.post(url, files=[("files", ("a.txt", b"hola", "text/plain"))]).status_code == 415
     grande = b"0" * (5 * 1024 * 1024 + 1)
     assert client.post(url, files=[("files", ("a.png", grande, "image/png"))]).status_code == 413
-    assert client.post(url, files=[("files", ("a.png", b"\x89PNG\r\n", "image/png"))]).status_code == 201
+    assert client.post(url, files=[("files", ("a.png", _png(), "image/png"))]).status_code == 201
 
 
 # ------------------------------------------------------------------ excel

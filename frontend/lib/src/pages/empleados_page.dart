@@ -672,7 +672,6 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
 
   Widget _content(SwissColors c) {
     final e = _emp!;
-    final valor = _assets.fold<double>(0, (s, a) => s + (a.cost ?? 0));
     final vigentes = {
       for (final h in _history)
         if (h['returned_at'] == null) h['asset_tag'] as String: h['assigned_at'] as String?
@@ -729,7 +728,6 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
       const SizedBox(height: 20),
       Wrap(spacing: 14, runSpacing: 14, children: [
         SizedBox(width: 200, child: KpiTile('Equipos asignados', '${_assets.length}', icon: Icons.devices_outlined)),
-        SizedBox(width: 200, child: KpiTile('Valor en custodia', '\$${valor.toStringAsFixed(0)}', icon: Icons.attach_money, color: c.ok)),
         SizedBox(width: 200, child: KpiTile('Movimientos', '${_history.length}', icon: Icons.swap_horiz, color: c.accent2)),
       ]),
       const SizedBox(height: 24),

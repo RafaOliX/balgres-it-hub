@@ -99,18 +99,13 @@ class ItAsset(SQLModel, table=True):
     assigned_to: Optional[str] = Field(default=None, max_length=128)  # nombre del custodio actual
     employee_id: Optional[int] = Field(default=None, foreign_key="employees.id")
 
-    # Compra y garantía
-    purchase_date: Optional[date] = Field(default=None)
-    cost: Optional[float] = Field(default=None)
-    supplier: Optional[str] = Field(default=None, max_length=128)
-    invoice_number: Optional[str] = Field(default=None, max_length=64)
-    warranty_until: Optional[date] = Field(default=None)
 
     # Campos técnicos libres por categoría (RAM, CPU, IP, MAC...)
     specs: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
     created_at: datetime = Field(default_factory=_now)
     is_draft: bool = Field(default=False)
+    updated_at: datetime = Field(default_factory=_now, index=True, sa_column_kwargs={"onupdate": _now})
     deleted_at: Optional[datetime] = Field(default=None, index=True)  # soft delete
 
     images: List[ItAssetImage] = Relationship(

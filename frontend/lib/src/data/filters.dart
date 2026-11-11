@@ -32,19 +32,10 @@ T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
 // ------------------------------------------------------------------ filtro
 enum AssignFilter { all, assigned, unassigned }
 
-enum WarrantyFilter { all, expired, soon, none }
-
 const assignLabels = {
   AssignFilter.all: 'Todos',
   AssignFilter.assigned: 'Asignados',
   AssignFilter.unassigned: 'Sin asignar',
-};
-
-const warrantyLabels = {
-  WarrantyFilter.all: 'Todas',
-  WarrantyFilter.expired: 'Vencida',
-  WarrantyFilter.soon: 'Vence en 60 días',
-  WarrantyFilter.none: 'Sin garantía registrada',
 };
 
 const sortLabels = {
@@ -52,7 +43,6 @@ const sortLabels = {
   'tag': 'Tag',
   'brand': 'Marca / modelo',
   'status': 'Estado',
-  'warranty': 'Garantía (vence antes)',
 };
 
 const groupLabels = {
@@ -68,7 +58,6 @@ class InventoryFilter {
   final Set<int> categoryIds;
   final Set<String> locations;
   final AssignFilter assign;
-  final WarrantyFilter warranty;
   final bool showDrafts;
   final String sort;
   final String? groupBy;
@@ -79,7 +68,6 @@ class InventoryFilter {
     this.categoryIds = const {},
     this.locations = const {},
     this.assign = AssignFilter.all,
-    this.warranty = WarrantyFilter.all,
     this.showDrafts = false,
     this.sort = 'recent',
     this.groupBy,
@@ -91,7 +79,6 @@ class InventoryFilter {
     Set<int>? categoryIds,
     Set<String>? locations,
     AssignFilter? assign,
-    WarrantyFilter? warranty,
     bool? showDrafts,
     String? sort,
     String? groupBy,
@@ -103,7 +90,6 @@ class InventoryFilter {
         categoryIds: categoryIds ?? this.categoryIds,
         locations: locations ?? this.locations,
         assign: assign ?? this.assign,
-        warranty: warranty ?? this.warranty,
         showDrafts: showDrafts ?? this.showDrafts,
         sort: sort ?? this.sort,
         groupBy: clearGroupBy ? null : (groupBy ?? this.groupBy),
@@ -115,8 +101,7 @@ class InventoryFilter {
       (showDrafts ? 1 : 0) +
       (categoryIds.isNotEmpty ? 1 : 0) +
       (locations.isNotEmpty ? 1 : 0) +
-      (assign != AssignFilter.all ? 1 : 0) +
-      (warranty != WarrantyFilter.all ? 1 : 0);
+      (assign != AssignFilter.all ? 1 : 0);
 
   bool get isDefault => query.trim().isEmpty && panelCount == 0 && sort == 'recent' && groupBy == null;
 
@@ -128,7 +113,6 @@ class InventoryFilter {
       if (categoryIds.isNotEmpty) '${categoryIds.length} categoría(s)',
       if (locations.isNotEmpty) '${locations.length} ubicación(es)',
       if (assign != AssignFilter.all) assignLabels[assign]!,
-      if (warranty != WarrantyFilter.all) 'Garantía: ${warrantyLabels[warranty]}',
       if (groupBy != null) 'Agrupado: ${groupLabels[groupBy] ?? groupBy}',
     ];
     return p.isEmpty ? 'Sin filtros' : p.join(' · ');
@@ -140,7 +124,6 @@ class InventoryFilter {
         'categoryIds': categoryIds.toList(),
         'locations': locations.toList(),
         'assign': assign.name,
-        'warranty': warranty.name,
         'showDrafts': showDrafts,
         'sort': sort,
         'groupBy': groupBy,
@@ -152,7 +135,6 @@ class InventoryFilter {
         categoryIds: Set<int>.from((j['categoryIds'] as List?) ?? const []),
         locations: Set<String>.from((j['locations'] as List?) ?? const []),
         assign: _enumByName(AssignFilter.values, j['assign'], AssignFilter.all),
-        warranty: _enumByName(WarrantyFilter.values, j['warranty'], WarrantyFilter.all),
         showDrafts: (j['showDrafts'] as bool?) ?? false,
         sort: (j['sort'] as String?) ?? 'recent',
         groupBy: j['groupBy'] as String?,
@@ -174,9 +156,6 @@ int naturalCompare(String a, String b) {
 /// Filtra y ordena. Con [ignoreStatus] omite estado/borradores (sirve para los contadores de los chips).
 List<ItAsset> applyFilter(List<ItAsset> items, InventoryFilter f, {bool ignoreStatus = false}) {
   final terms = normalizeText(f.query.trim()).split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-
   final out = items.where((a) {
     if (!ignoreStatus) {
       if (f.showDrafts) {
@@ -194,24 +173,10 @@ List<ItAsset> applyFilter(List<ItAsset> items, InventoryFilter f, {bool ignoreSt
     if (f.assign == AssignFilter.assigned && !asignado) return false;
     if (f.assign == AssignFilter.unassigned && asignado) return false;
 
-    final w = a.warrantyUntil;
-    switch (f.warranty) {
-      case WarrantyFilter.all:
-        break;
-      case WarrantyFilter.expired:
-        if (w == null || !w.isBefore(today)) return false;
-      case WarrantyFilter.soon:
-        if (w == null) return false;
-        final d = w.difference(today).inDays;
-        if (d < 0 || d > 60) return false;
-      case WarrantyFilter.none:
-        if (w != null) return false;
-    }
-
     if (terms.isNotEmpty) {
       final hay = normalizeText([
         a.assetTag, a.category, a.brand, a.model, a.serialNumber, a.location,
-        a.assignedTo, a.notes, a.supplier, a.invoiceNumber, ...a.specs.values,
+        a.assignedTo, a.notes, ...a.specs.values,
       ].whereType<String>().join(' '));
       if (!terms.every(hay.contains)) return false;
     }
@@ -225,14 +190,6 @@ List<ItAsset> applyFilter(List<ItAsset> items, InventoryFilter f, {bool ignoreSt
       out.sort((a, b) => normalizeText('${a.brand} ${a.model}').compareTo(normalizeText('${b.brand} ${b.model}')));
     case 'status':
       out.sort((a, b) => (a.status ?? '').compareTo(b.status ?? ''));
-    case 'warranty':
-      out.sort((a, b) {
-        final x = a.warrantyUntil, y = b.warrantyUntil;
-        if (x == null && y == null) return 0;
-        if (x == null) return 1;
-        if (y == null) return -1;
-        return x.compareTo(y);
-      });
     default:
       out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }

@@ -21,7 +21,7 @@ class AssetThumbnail extends StatelessWidget {
         width: size,
         height: size,
         child: asset.imageUrl != null
-            ? Image.network(asset.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder())
+            ? Image.network(asset.imageUrl!, fit: BoxFit.cover, cacheWidth: (size * 3).round(), errorBuilder: (_, __, ___) => placeholder())
             : placeholder(),
       ),
     );

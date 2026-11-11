@@ -77,7 +77,7 @@ const kActaEmployeeFields = <(String, String)>[
 const kActaAssetColumns = <(String, String)>[
   ('tag', 'Tag'), ('equipo', 'Equipo (categoría, marca, modelo)'), ('category', 'Categoría'), ('brand', 'Marca'),
   ('model', 'Modelo'), ('serial', 'S/N'), ('quantity', 'Cantidad'), ('status', 'Estado'), ('location', 'Ubicación'),
-  ('warranty', 'Garantía hasta'), ('cost', 'Costo'), ('specs', 'Datos técnicos'), ('notes', 'Notas'),
+  ('specs', 'Datos técnicos'), ('notes', 'Notas'),
 ];
 
 class ActaTemplate {

@@ -48,19 +48,23 @@ class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBin
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
   Timer? _poll;
+  Timer? _debounce;
+  String? _version;
+  bool _visible = true;
 
   @override
   void initState() {
     super.initState();
     _searchCtrl.text = ref.read(inventoryFilterProvider).query;
     WidgetsBinding.instance.addObserver(this);
-    _poll = Timer.periodic(const Duration(seconds: 20), (_) => _silentRefresh());
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _silentRefresh());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    _debounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -68,13 +72,30 @@ class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _silentRefresh();
+    _visible = state == AppLifecycleState.resumed;
+    if (_visible) _silentRefresh();
   }
 
-  void _silentRefresh() {
-    if (!mounted) return;
+  /// Consulta una huella mínima y solo recarga la lista si algo cambió.
+  Future<void> _silentRefresh() async {
+    if (!mounted || !_visible) return;
     if (ModalRoute.of(context)?.isCurrent != true) return;
-    ref.invalidate(inventarioListProvider);
+    try {
+      final v = await ref.read(inventarioApiProvider).getVersion();
+      if (v != _version) {
+        _version = v;
+        ref.invalidate(inventarioListProvider);
+      }
+    } catch (_) {}
+  }
+
+  void _onQuery(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      final f = ref.read(inventoryFilterProvider);
+      ref.read(inventoryFilterProvider.notifier).state = f.copyWith(query: v);
+    });
   }
 
   void _snack(String m) {
@@ -196,7 +217,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     ref.listen<String>(inventoryFilterProvider.select((f) => f.query), (_, q) {
-      if (_searchCtrl.text != q) {
+      if (_searchCtrl.text != q && (q.isEmpty || !_searchFocus.hasFocus)) {
         _searchCtrl.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
       }
     });
@@ -208,7 +229,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBin
     final isMobile = MediaQuery.sizeOf(context).width < 900;
 
     final items = async.valueOrNull ?? const <ItAsset>[];
-    final filtered = applyFilter(items, filter);
+    final filtered = ref.watch(filteredAssetsProvider);
     final groups = groupAssets(filtered, filter.groupBy);
     final rows = <Object>[
       for (final e in groups.entries) ...[
@@ -274,6 +295,7 @@ class _InventarioPageState extends ConsumerState<InventarioPage> with WidgetsBin
             onSubmit: (v) => _onSubmit(v, filtered, items),
             onRefresh: _refresh,
             onColumns: () => showColumnsDialog(context, allCols),
+            onQuery: _onQuery,
           ),
           if (sel.isNotEmpty) BulkBar(selected: items.where((a) => sel.contains(a.assetTag)).toList()),
           const SizedBox(height: 14),
@@ -296,10 +318,11 @@ class _Toolbar extends ConsumerWidget {
   final ValueChanged<String> onSubmit;
   final VoidCallback onRefresh;
   final VoidCallback onColumns;
+  final ValueChanged<String> onQuery;
 
   const _Toolbar({
     required this.controller, required this.focus, required this.items, required this.shown, required this.isMobile,
-    required this.onMenu, required this.onSubmit, required this.onRefresh, required this.onColumns,
+    required this.onMenu, required this.onSubmit, required this.onRefresh, required this.onColumns, required this.onQuery,
   });
 
   @override
@@ -309,7 +332,7 @@ class _Toolbar extends ConsumerWidget {
     final cats = ref.watch(categoriasListProvider).valueOrNull ?? const <Category>[];
     void set(InventoryFilter f) => ref.read(inventoryFilterProvider.notifier).state = f;
 
-    final base = applyFilter(items, filter, ignoreStatus: true);
+    final base = ref.watch(statusBaseProvider);
     int countStatus(String s) => base.where((a) => !a.isDraft && a.status == s).length;
     final tabs = <(String, int, bool, VoidCallback)>[
       ('Todos', base.where((a) => !a.isDraft).length, filter.statuses.isEmpty && !filter.showDrafts, () => set(filter.copyWith(statuses: <String>{}, showDrafts: false))),
@@ -323,7 +346,6 @@ class _Toolbar extends ConsumerWidget {
         _chip('Cat: ${cats.where((x) => x.id == id).firstOrNull?.name ?? id}', () => set(filter.copyWith(categoryIds: {...filter.categoryIds}..remove(id)))),
       for (final l in filter.locations) _chip('Ubic: $l', () => set(filter.copyWith(locations: {...filter.locations}..remove(l)))),
       if (filter.assign != AssignFilter.all) _chip(assignLabels[filter.assign]!, () => set(filter.copyWith(assign: AssignFilter.all))),
-      if (filter.warranty != WarrantyFilter.all) _chip('Garantía: ${warrantyLabels[filter.warranty]}', () => set(filter.copyWith(warranty: WarrantyFilter.all))),
       if (filter.sort != 'recent') _chip('Orden: ${sortLabels[filter.sort]}', () => set(filter.copyWith(sort: 'recent'))),
       if (filter.groupBy != null) _chip('Agrupado: ${groupLabels[filter.groupBy]}', () => set(filter.copyWith(clearGroupBy: true))),
     ];
@@ -362,7 +384,7 @@ class _Toolbar extends ConsumerWidget {
             focusNode: focus,
             autofocus: !isMobile,
             textInputAction: TextInputAction.search,
-            onChanged: (v) => set(ref.read(inventoryFilterProvider).copyWith(query: v)),
+            onChanged: onQuery,
             onSubmitted: onSubmit,
             decoration: InputDecoration(
               hintText: isMobile ? 'Buscar activo…' : 'Buscar por tag, marca, S/N, IP, MAC, ubicación, responsable…',
@@ -466,10 +488,6 @@ class _DesktopTable extends ConsumerWidget {
         ]);
       case 'status':
         child = StatusTag(status: a.status, draft: a.isDraft);
-      case 'warranty':
-        final w = a.warrantyUntil;
-        final col2 = w == null ? c.muted : (w.isBefore(DateTime.now()) ? c.bad : c.ink);
-        child = Text(col.text(a), style: TextStyle(fontSize: 13, color: col2, fontWeight: w != null && w.isBefore(DateTime.now()) ? FontWeight.w700 : FontWeight.w400));
       case 'equipo':
         child = Text(col.text(a), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500));
       default:

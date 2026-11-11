@@ -29,9 +29,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _notes = TextEditingController();
   final _quantity = TextEditingController(text: '1');
   final _copies = TextEditingController(text: '1');
-  final _cost = TextEditingController();
-  final _supplier = TextEditingController();
-  final _invoice = TextEditingController();
   final Map<String, TextEditingController> _specCtrls = {};
   static const _uniqueSpecs = {'ip', 'mac', 'hostname'};
 
@@ -39,7 +36,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   String _unit = 'Unidad';
   String _status = 'Operativo';
   int? _locationId;
-  DateTime? _purchaseDate, _warrantyUntil;
   final List<XFile> _files = [];
   bool _saving = false;
   bool _cargandoTag = false;
@@ -47,12 +43,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   Timer? _autosaveTimer;
   bool _hasChanges = false;
   bool _autoSaved = false;
+  bool _autoFailed = false;
   String? _draftTag;
 
   @override
   void initState() {
     super.initState();
-    for (final c in [_brand, _model, _serial, _notes, _quantity, _cost, _supplier, _invoice]) {
+    for (final c in [_brand, _model, _serial, _notes, _quantity]) {
       c.addListener(_markChanged);
     }
     _autosaveTimer = Timer.periodic(const Duration(seconds: 4), (_) {
@@ -76,12 +73,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     setState(() {
       _brand.text = t.brand;
       _model.text = t.model;
-      _supplier.text = t.supplier ?? '';
-      _invoice.text = t.invoiceNumber ?? '';
-      _cost.text = t.cost?.toString() ?? '';
       _notes.text = t.notes ?? '';
-      _purchaseDate = t.purchaseDate;
-      _warrantyUntil = t.warrantyUntil;
       _locationId = t.locationId;
       _status = t.status ?? 'Operativo';
       t.specs.forEach((k, v) {
@@ -133,7 +125,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     final ref0 = _lastOf(cat, brand: _brand.text, model: model);
     if (ref0 == null) return;
     setState(() {
-      if (_supplier.text.trim().isEmpty) _supplier.text = ref0.supplier ?? '';
       ref0.specs.forEach((k, v) {
         if (_uniqueSpecs.contains(k.toLowerCase())) return;
         final ctrl = _specCtrls[k];
@@ -148,16 +139,14 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: noSerial ? '' : _serial.text.trim(),
         locationId: _locationId, status: _status, notes: _notes.text.trim(),
         quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, isDraft: draft,
-        purchaseDate: _purchaseDate, cost: parseCost(_cost.text), supplier: _supplier.text.trim(),
-        invoiceNumber: _invoice.text.trim(), warrantyUntil: _warrantyUntil, specs: collectSpecs(_specCtrls),
+        specs: collectSpecs(_specCtrls),
       );
 
   Map<String, dynamic> _buildPatch(bool draft) => {
         'brand': _brand.text.trim(), 'model': _model.text.trim(), 'serial_number': _serial.text.trim(),
         'status': _status, 'notes': _notes.text.trim(), 'quantity': int.tryParse(_quantity.text) ?? 1,
         'location_id': _locationId, 'is_draft': draft,
-        'purchase_date': dateToApi(_purchaseDate), 'cost': parseCost(_cost.text), 'supplier': _supplier.text.trim(),
-        'invoice_number': _invoice.text.trim(), 'warranty_until': dateToApi(_warrantyUntil), 'specs': collectSpecs(_specCtrls),
+        'specs': collectSpecs(_specCtrls),
       };
 
   Future<void> _saveDraftSilently() async {
@@ -170,9 +159,10 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       } else {
         await api.actualizar(_draftTag!, _buildPatch(true));
       }
-      if (mounted) setState(() => _autoSaved = true);
+      if (mounted) setState(() { _autoSaved = true; _autoFailed = false; });
     } catch (_) {
-      // el autoguardado es silencioso
+      _hasChanges = true; // reintenta en el próximo ciclo
+      if (mounted) setState(() => _autoFailed = true);
     }
   }
 
@@ -288,14 +278,13 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       final api = ref.read(inventarioApiProvider);
       final created = <String>[];
       if (_draftTag == null) {
-        created.add((await api.crear(_buildCreate(asDraft))).assetTag);
+        created.add((await api.crear(_buildCreate(asDraft), autoTag: true)).assetTag);
       } else {
         await api.actualizar(_draftTag!, _buildPatch(asDraft));
         created.add(_draftTag!);
       }
       for (var i = 1; i < copies; i++) {
-        final tag = await api.getSiguienteTag(cat.id);
-        created.add((await api.crear(_buildCreate(asDraft, tag: tag, noSerial: true))).assetTag);
+        created.add((await api.crear(_buildCreate(asDraft, noSerial: true), autoTag: true)).assetTag);
       }
       if (_files.isNotEmpty) {
         for (final t in created) {
@@ -354,7 +343,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   @override
   void dispose() {
     _autosaveTimer?.cancel();
-    for (final c in [_tag, _brand, _model, _serial, _notes, _quantity, _copies, _cost, _supplier, _invoice, ..._specCtrls.values]) {
+    for (final c in [_tag, _brand, _model, _serial, _notes, _quantity, _copies, ..._specCtrls.values]) {
       c.dispose();
     }
     super.dispose();
@@ -379,7 +368,8 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 800),
               child: Row(children: [
-                if (_autoSaved) Text('Borrador guardado', style: TextStyle(color: c.ok, fontSize: 12)),
+                if (_autoFailed) Text('No se pudo guardar el borrador: revisa la conexión', style: TextStyle(color: c.bad, fontSize: 12))
+                else if (_autoSaved) Text('Borrador guardado', style: TextStyle(color: c.ok, fontSize: 12)),
                 const Spacer(),
                 OutlinedButton(onPressed: busy ? null : () => _submit(another: true), child: const Text('Guardar y crear otro')),
                 const SizedBox(width: 10),
@@ -458,14 +448,6 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 ),
               ]),
               FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
-              FormSection('Compra y garantía', [
-                PurchaseFields(
-                  purchaseDate: _purchaseDate, warrantyUntil: _warrantyUntil,
-                  onPurchase: (d) => setState(() { _purchaseDate = d; _hasChanges = true; }),
-                  onWarranty: (d) => setState(() { _warrantyUntil = d; _hasChanges = true; }),
-                  cost: _cost, supplier: _supplier, invoice: _invoice, supplierHints: hints.suppliers,
-                ),
-              ]),
               FormSection('Ubicación y estado', [
                 LocationDropdown(value: _locationId, onChanged: (v) => setState(() { _locationId = v; _hasChanges = true; })),
                 const SizedBox(height: 16),

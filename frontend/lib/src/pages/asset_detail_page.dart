@@ -378,25 +378,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       Kv('Registrado', a.createdAt.toString().substring(0, 16)),
     ]);
 
-    final compra = SwissSection('Compra y garantía', [
-      Kv('Fecha compra', a.purchaseDate == null ? '—' : dateToApi(a.purchaseDate)!),
-      Kv('Costo', a.cost == null ? '—' : '\$${a.cost!.toStringAsFixed(2)}'),
-      Kv('Proveedor', a.supplier ?? '—'),
-      Kv('Factura', a.invoiceNumber ?? '—'),
-      Kv.widget(
-        'Garantía',
-        a.warrantyUntil == null
-            ? const Text('—')
-            : Row(children: [
-                Text(dateToApi(a.warrantyUntil)!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                const SizedBox(width: 10),
-                _warrantyChip(a.warrantyUntil!),
-              ]),
-      ),
-    ]);
-
     final right = <Widget>[
-      compra,
       if (a.specs.isNotEmpty) SwissSection('Datos técnicos', a.specs.entries.map((e) => Kv(e.key, e.value)).toList()),
       if ((a.notes ?? '').isNotEmpty) SwissSection('Notas', [Text(a.notes!, style: const TextStyle(fontSize: 14, height: 1.5))]),
     ];
@@ -422,17 +404,6 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
         tooltip: n > 0 ? 'Sumar 1 (ingreso)' : 'Restar 1 (uso)',
         onPressed: () => _ajustar(n),
       );
-
-  Widget _warrantyChip(DateTime d) {
-    final c = context.sw;
-    final days = d.difference(DateTime.now()).inDays;
-    final (txt, col) = days < 0 ? ('Vencida', c.bad) : (days <= 60 ? ('Vence en $days días', c.warn) : ('Vigente', c.ok));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(border: Border.all(color: col), borderRadius: BorderRadius.circular(2)),
-      child: Text(txt.toUpperCase(), style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-    );
-  }
 
   Widget _galeria() {
     final imgs = _asset!.images;

@@ -1,6 +1,7 @@
 """Schemas Pydantic del módulo inventario."""
+import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -9,6 +10,9 @@ def _blank_to_none(v):
     if isinstance(v, str) and v.strip() == "":
         return None
     return v
+
+
+Status = Literal["Operativo", "En Revisión", "Retirado"]
 
 
 # ---------------------------------------------------------------- categorías
@@ -81,6 +85,19 @@ class EmployeeCreate(BaseModel):
     def _e(cls, v):
         return _blank_to_none(v)
 
+    @field_validator("phone", "extension")
+    @classmethod
+    def _fmt(cls, v, info):
+        if v is None:
+            return v
+        v = v.strip()
+        if info.field_name == "extension":
+            if not re.fullmatch(r"\d{1,10}", v):
+                raise ValueError("La extensión debe ser numérica (máx. 10 dígitos)")
+        elif not re.fullmatch(r"[\d+()\-\s.]{5,25}", v):
+            raise ValueError("Teléfono inválido: usa números, +, -, paréntesis")
+        return v
+
 
 class EmployeeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -136,7 +153,7 @@ class ItAssetHistoryRead(BaseModel):
     changed_at: datetime
 
 
-_OPT_TEXT = ("serial_number", "location", "notes", "assigned_to", "supplier", "invoice_number")
+_OPT_TEXT = ("serial_number", "location", "notes")
 
 
 class ItAssetCreate(BaseModel):
@@ -148,48 +165,34 @@ class ItAssetCreate(BaseModel):
     serial_number: Optional[str] = None
     location: Optional[str] = None
     location_id: Optional[int] = None
-    status: Optional[str] = "Operativo"
+    status: Optional[Status] = "Operativo"
     notes: Optional[str] = None
     quantity: Optional[int] = 1
     unit: Optional[str] = "Unidad"
-    assigned_to: Optional[str] = None
     is_draft: Optional[bool] = False
-    purchase_date: Optional[date] = None
-    cost: Optional[float] = None
-    supplier: Optional[str] = None
-    invoice_number: Optional[str] = None
-    warranty_until: Optional[date] = None
     specs: Optional[Dict[str, Any]] = None
 
-    @field_validator(*_OPT_TEXT)
+    @field_validator(*_OPT_TEXT, check_fields=False)
     @classmethod
     def empty_to_none(cls, v):
         return _blank_to_none(v)
 
 
 class ItAssetUpdate(BaseModel):
-    asset_tag: Optional[str] = Field(default=None, min_length=1, max_length=64)
     category: Optional[str] = Field(default=None, min_length=1, max_length=64)
     category_id: Optional[int] = None
     brand: Optional[str] = Field(default=None, max_length=64)
     model: Optional[str] = Field(default=None, max_length=128)
     serial_number: Optional[str] = None
-    location: Optional[str] = Field(default=None, max_length=256)
     location_id: Optional[int] = None
-    status: Optional[str] = Field(default=None, max_length=32)
+    status: Optional[Status] = None
     notes: Optional[str] = None
     quantity: Optional[int] = None
     unit: Optional[str] = None
-    assigned_to: Optional[str] = None
     is_draft: Optional[bool] = None
-    purchase_date: Optional[date] = None
-    cost: Optional[float] = None
-    supplier: Optional[str] = None
-    invoice_number: Optional[str] = None
-    warranty_until: Optional[date] = None
     specs: Optional[Dict[str, Any]] = None
 
-    @field_validator(*_OPT_TEXT)
+    @field_validator(*_OPT_TEXT, check_fields=False)
     @classmethod
     def empty_to_none(cls, v):
         return _blank_to_none(v)
@@ -213,11 +216,6 @@ class ItAssetRead(BaseModel):
     unit: Optional[str] = "Unidad"
     assigned_to: Optional[str] = None
     employee_id: Optional[int] = None
-    purchase_date: Optional[date] = None
-    cost: Optional[float] = None
-    supplier: Optional[str] = None
-    invoice_number: Optional[str] = None
-    warranty_until: Optional[date] = None
     specs: Optional[Dict[str, Any]] = None
     created_at: datetime
     is_draft: bool

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/it_asset.dart';
 import '../models/category.dart';
 import 'inventario_api.dart';
+import 'filters.dart';
 import '../models/catalogs.dart';
 
 final inventarioApiProvider = Provider<InventarioApi>((ref) {
@@ -85,10 +86,10 @@ List<String> _rank(Iterable<String?> values) {
 }
 
 class Hints {
-  final List<String> brands, models, suppliers;
+  final List<String> brands, models;
   final Map<String, List<String>> _byBrand;
   final Map<String, List<String>> specs;
-  const Hints(this.brands, this.models, this.suppliers, this._byBrand, this.specs);
+  const Hints(this.brands, this.models, this._byBrand, this.specs);
 
   /// Modelos de esa marca; si no hay, todos.
   List<String> modelsFor(String brand) {
@@ -111,8 +112,20 @@ final hintsProvider = Provider.autoDispose<Hints>((ref) {
   return Hints(
     _rank(items.map((a) => a.brand)),
     _rank(items.map((a) => a.model)),
-    _rank(items.map((a) => a.supplier)),
     {for (final e in grouped.entries) e.key: _rank(e.value)},
     {for (final e in specVals.entries) e.key: _rank(e.value)},
   );
+});
+
+
+/// Lista filtrada y ordenada: se calcula una vez por cambio de datos o de filtro.
+final filteredAssetsProvider = Provider.autoDispose<List<ItAsset>>((ref) {
+  final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+  return applyFilter(items, ref.watch(inventoryFilterProvider));
+});
+
+/// Igual pero sin aplicar estado: alimenta los contadores de las pestañas.
+final statusBaseProvider = Provider.autoDispose<List<ItAsset>>((ref) {
+  final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+  return applyFilter(items, ref.watch(inventoryFilterProvider), ignoreStatus: true);
 });

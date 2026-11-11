@@ -15,34 +15,6 @@ class FormSection extends StatelessWidget {
   Widget build(BuildContext context) => SwissSection(title, children);
 }
 
-class DateField extends StatelessWidget {
-  final String label;
-  final DateTime? value;
-  final ValueChanged<DateTime?> onChanged;
-  const DateField({super.key, required this.label, required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: () async {
-          final now = DateTime.now();
-          final d = await showDatePicker(
-            context: context, initialDate: value ?? now,
-            firstDate: DateTime(2000), lastDate: DateTime(now.year + 15),
-          );
-          if (d != null) onChanged(d);
-        },
-        child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: label,
-            suffixIcon: value == null
-                ? const Icon(Icons.calendar_today, size: 18)
-                : IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => onChanged(null)),
-          ),
-          child: Text(value == null ? '—' : value!.toIso8601String().substring(0, 10)),
-        ),
-      );
-}
-
 /// Ubicación con búsqueda: escribe "rack" y trae "Informática › Sala › Rack 1".
 class LocationDropdown extends ConsumerWidget {
   final int? value;
@@ -67,39 +39,6 @@ class LocationDropdown extends ConsumerWidget {
       ),
     );
   }
-}
-
-class PurchaseFields extends StatelessWidget {
-  final DateTime? purchaseDate;
-  final DateTime? warrantyUntil;
-  final ValueChanged<DateTime?> onPurchase;
-  final ValueChanged<DateTime?> onWarranty;
-  final TextEditingController cost;
-  final TextEditingController supplier;
-  final TextEditingController invoice;
-  final List<String> supplierHints;
-  const PurchaseFields({
-    super.key, required this.purchaseDate, required this.warrantyUntil, required this.onPurchase,
-    required this.onWarranty, required this.cost, required this.supplier, required this.invoice,
-    this.supplierHints = const [],
-  });
-
-  @override
-  Widget build(BuildContext context) => Column(children: [
-        Row(children: [
-          Expanded(child: DateField(label: 'Fecha de compra', value: purchaseDate, onChanged: onPurchase)),
-          const SizedBox(width: 16),
-          Expanded(child: DateField(label: 'Garantía hasta', value: warrantyUntil, onChanged: onWarranty)),
-        ]),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Costo', prefixText: '\$ '))),
-          const SizedBox(width: 16),
-          Expanded(child: SuggestField(controller: supplier, label: 'Proveedor', suggestions: () => supplierHints)),
-        ]),
-        const SizedBox(height: 16),
-        TextFormField(controller: invoice, decoration: const InputDecoration(labelText: 'N° de factura')),
-      ]);
 }
 
 class SpecsFields extends StatelessWidget {
@@ -129,5 +68,3 @@ Map<String, String> collectSpecs(Map<String, TextEditingController> ctrls) {
   });
   return m;
 }
-
-double? parseCost(String s) => double.tryParse(s.trim().replaceAll(',', '.'));

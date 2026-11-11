@@ -111,13 +111,6 @@ class _FiltersSheet extends ConsumerWidget {
                   ]),
                 ),
                 _section(
-                  'Garantía',
-                  Wrap(spacing: 8, runSpacing: 4, children: [
-                    for (final e in warrantyLabels.entries)
-                      ChoiceChip(label: Text(e.value), selected: f.warranty == e.key, onSelected: (_) => set(f.copyWith(warranty: e.key))),
-                  ]),
-                ),
-                _section(
                   'Ordenar por',
                   Wrap(spacing: 8, runSpacing: 4, children: [
                     for (final e in sortLabels.entries)

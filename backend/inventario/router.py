@@ -13,12 +13,12 @@ from fpdf import FPDF
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, select
 
-from .actas import render_acta, seed_templates
+from .actas import DEFAULT_CONFIG, render_acta, seed_templates
 from .actas import router as actas_router
 from .catalogos import router as catalogos_router
 from .common import current_user, location_paths
 from .db import apply_migrations, engine, get_session
-from .models import ActaTemplate, Category, Employee, ItAsset, ItAssetAssignment, ItAssetHistory, ItAssetImage
+from .models import ActaTemplate, Category, Employee, ItAsset, ItAssetAssignment, ItAssetHistory, ItAssetImage, Location
 from .schemas import (
     AssignmentRead,
     AssignRequest,
@@ -166,6 +166,16 @@ def ajustar_stock(asset_tag: str, amount: int, session: Session = Depends(get_se
 # ==============================================================================
 # RUTAS FIJAS (DEBEN IR PRIMERO PARA EVITAR QUE /{asset_tag} LAS ATRAPE)
 # ==============================================================================
+@router.get("/version")
+def version(session: Session = Depends(get_session)):
+    """Huella barata del inventario: el cliente solo recarga la lista cuando cambia."""
+    from sqlalchemy import func
+    n = session.exec(select(func.count()).select_from(ItAsset)).one()
+    last = session.exec(select(func.max(ItAsset.updated_at))).one()
+    imgs = session.exec(select(func.count()).select_from(ItAssetImage)).one()
+    return {"v": f"{n}-{last}-{imgs}"}
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"module": "inventario", "status": "ok"}
@@ -244,7 +254,7 @@ def get_siguiente_tag(category_id: int, session: Session = Depends(get_session))
 # ---- excel
 EXPORT_COLS = [
     "Tag", "Categoría", "Marca", "Modelo", "S/N", "Cantidad", "Unidad", "Ubicación", "Estado",
-    "Asignado a", "Notas", "Fecha compra", "Costo", "Proveedor", "Factura", "Garantía hasta",
+    "Asignado a", "Notas",
 ]
 
 
@@ -258,8 +268,6 @@ def exportar_excel(session: Session = Depends(get_session)):
             "Tag": a.asset_tag, "Categoría": a.category, "Marca": a.brand, "Modelo": a.model,
             "S/N": a.serial_number, "Cantidad": a.quantity, "Unidad": a.unit, "Ubicación": a.location,
             "Estado": a.status, "Asignado a": a.assigned_to, "Notas": a.notes,
-            "Fecha compra": a.purchase_date, "Costo": a.cost, "Proveedor": a.supplier,
-            "Factura": a.invoice_number, "Garantía hasta": a.warranty_until,
         }
         for a in assets
     ]
@@ -275,8 +283,15 @@ def exportar_excel(session: Session = Depends(get_session)):
     )
 
 
+_STATUS_MAP = {"operativo": "Operativo", "en revision": "En Revisión", "en revisión": "En Revisión", "retirado": "Retirado"}
+
+
+def _k(v) -> str:
+    return " ".join(str(v).split()).lower()
+
+
 @router.post("/import")
-async def importar_excel(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def importar_excel(file: UploadFile = File(...), session: Session = Depends(get_session), user: str = Depends(current_user)):
     try:
         df = pd.read_excel(BytesIO(await file.read()), dtype=str)
     except Exception:
@@ -287,6 +302,11 @@ async def importar_excel(file: UploadFile = File(...), session: Session = Depend
 
     cats = {c.name.lower(): c for c in session.exec(select(Category)).all()}
     existentes = set(session.exec(select(ItAsset.asset_tag)).all())
+    paths = location_paths(session)
+    locs = {_k(p): lid for lid, p in paths.items()}
+    for l in session.exec(select(Location).where(Location.parent_id.is_(None))).all():
+        locs.setdefault(_k(l.name), l.id)
+    emps = {_k(e.name): e for e in session.exec(select(Employee)).all()}
     creados, omitidos, errores = 0, 0, []
 
     for i, row in df.iterrows():
@@ -308,16 +328,48 @@ async def importar_excel(file: UploadFile = File(...), session: Session = Depend
         except ValueError:
             errores.append({"fila": fila, "detalle": "Cantidad inválida"})
             continue
-        session.add(ItAsset(
-            asset_tag=tag, category=cat.name, category_id=cat.id, brand=brand, model=model,
-            serial_number=_clean(row.get("S/N")), quantity=qty,
-            unit=_clean(row.get("Unidad")) or cat.unit, location=_clean(row.get("Ubicación")),
-            status=_clean(row.get("Estado")) or "Operativo",
-            assigned_to=_clean(row.get("Asignado a")), notes=_clean(row.get("Notas")),
-            purchase_date=_date(row.get("Fecha compra")), cost=_float(row.get("Costo")),
-            supplier=_clean(row.get("Proveedor")), invoice_number=_clean(row.get("Factura")),
-            warranty_until=_date(row.get("Garantía hasta")),
-        ))
+        st_raw = _clean(row.get("Estado"))
+        status_val = _STATUS_MAP.get(_k(st_raw)) if st_raw else "Operativo"
+        if status_val is None:
+            errores.append({"fila": fila, "detalle": f"Estado inválido '{st_raw}' (Operativo, En Revisión, Retirado)"})
+            continue
+        sn = _clean(row.get("S/N"))
+        if cat.requires_sn and not sn:
+            errores.append({"fila": fila, "detalle": f"La categoría '{cat.name}' requiere S/N"})
+            continue
+
+        loc_id = None
+        loc_txt = _clean(row.get("Ubicación"))
+        if loc_txt:
+            loc_id = locs.get(_k(loc_txt))
+            if loc_id is None:
+                loc = Location(name=" ".join(loc_txt.split()))
+                session.add(loc)
+                session.flush()
+                loc_id = loc.id
+                locs[_k(loc_txt)] = loc_id
+                paths[loc_id] = loc.name
+        emp = None
+        who = _clean(row.get("Asignado a"))
+        if who:
+            emp = emps.get(_k(who))
+            if emp is None:
+                emp = Employee(name=" ".join(who.split()))
+                session.add(emp)
+                session.flush()
+                emps[_k(who)] = emp
+
+        asset = ItAsset(
+            asset_tag=tag, category=cat.name, category_id=cat.id, brand=brand, model=model, serial_number=sn,
+            quantity=qty, unit=_clean(row.get("Unidad")) or cat.unit,
+            location=paths.get(loc_id) if loc_id else None, location_id=loc_id, status=status_val,
+            notes=_clean(row.get("Notas")), employee_id=emp.id if emp else None, assigned_to=emp.name if emp else None,
+        )
+        session.add(asset)
+        session.flush()
+        session.add(ItAssetHistory(asset_id=asset.id, field_name="registro", new_value="Importado desde Excel", changed_by=user))
+        if emp:
+            session.add(ItAssetAssignment(asset_id=asset.id, employee_id=emp.id, employee_name=emp.name, delivered_by=user, notes="Importado desde Excel"))
         existentes.add(tag)
         creados += 1
 
@@ -424,7 +476,27 @@ def listar(
 
 
 @router.post("/", response_model=ItAssetRead, status_code=201)
-def crear(payload: ItAssetCreate, session: Session = Depends(get_session), user: str = Depends(current_user)):
+def crear(payload: ItAssetCreate, auto_tag: bool = False, session: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Con auto_tag=true el servidor asigna el siguiente tag de la categoría y reintenta si hubo colisión."""
+    if not (auto_tag and payload.category_id is not None):
+        return _crear(payload, session, user)
+    cat = session.get(Category, payload.category_id)
+    if not cat:
+        raise HTTPException(404, detail="Categoría no encontrada")
+    last: HTTPException | None = None
+    for _ in range(6):
+        payload.asset_tag = _next_tag(session, cat.prefix)
+        try:
+            return _crear(payload, session, user)
+        except HTTPException as e:
+            if e.status_code != 409 or "Tag" not in str(e.detail):
+                raise
+            session.rollback()
+            last = e
+    raise last  # type: ignore[misc]
+
+
+def _crear(payload: ItAssetCreate, session: Session, user: str):
     # Verificar si el Tag ya existe
     existente = session.exec(select(ItAsset).where(ItAsset.asset_tag == payload.asset_tag)).first()
     if existente:
@@ -541,7 +613,13 @@ def historial(asset_tag: str, session: Session = Depends(get_session)):
 @router.delete("/{asset_tag}", status_code=204)
 def eliminar(asset_tag: str, session: Session = Depends(get_session), user: str = Depends(current_user)):
     asset = _get_or_404(session, asset_tag)
-    asset.deleted_at = datetime.now(timezone.utc)
+    ahora = datetime.now(timezone.utc)
+    asset.deleted_at = ahora
+    if asset.employee_id or asset.assigned_to:  # cierra la custodia abierta
+        _cerrar_abiertas(session, asset.id, ahora, "Enviado a la papelera")
+        _log_change(session, asset.id, "asignado_a", asset.assigned_to, None, user)
+        asset.employee_id = None
+        asset.assigned_to = None
     session.add(ItAssetHistory(asset_id=asset.id, field_name="registro", new_value="Enviado a la papelera", changed_by=user))
     session.add(asset)
     session.commit()
@@ -646,7 +724,17 @@ async def subir_imagenes(asset_tag: str, files: list[UploadFile] = File(...), se
         content = await f.read()
         if len(content) > MAX_SIZE_BYTES:
             raise HTTPException(413, detail=f"'{f.filename}' supera {MAX_SIZE_BYTES // (1024 * 1024)} MB")
-        validados.append((content, EXT_MAP[f.content_type]))
+        try:
+            from PIL import Image
+            with Image.open(BytesIO(content)) as im:
+                fmt = (im.format or "").upper()
+                im.verify()
+        except Exception:
+            raise HTTPException(415, detail=f"'{f.filename}' no es una imagen válida.")
+        ext = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}.get(fmt)
+        if ext is None:
+            raise HTTPException(415, detail=f"Formato no permitido en '{f.filename}'. Usa JPG, PNG o WEBP.")
+        validados.append((content, ext))
     nuevas = []
     for content, ext in validados:
         filename = f"{uuid.uuid4().hex}.{ext}"
@@ -682,45 +770,15 @@ def qr_png(asset_tag: str, session: Session = Depends(get_session)):
 @router.get("/{asset_tag}/pdf")
 def generar_pdf(asset_tag: str, template_id: int | None = None, session: Session = Depends(get_session)):
     asset = _get_or_404(session, asset_tag)
+    cfg = DEFAULT_CONFIG
     if template_id is not None:
         t = session.get(ActaTemplate, template_id)
         if not t:
             raise HTTPException(404, detail="Plantilla no encontrada")
-        emp = session.get(Employee, asset.employee_id) if asset.employee_id else None
-        data = render_acta(session, t.config, emp, [asset])
-        return StreamingResponse(
-            BytesIO(data), media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=acta_{asset.asset_tag}.pdf"},
-        )
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=16, style="B")
-    pdf.cell(190, 10, txt=_latin("Acta de Recepción de Equipo TI"), ln=True, align="C")
-    pdf.set_font("Helvetica", size=10)
-    pdf.cell(190, 8, txt=_latin(f"Fecha: {datetime.now():%d/%m/%Y %H:%M}"), ln=True, align="C")
-    pdf.set_font("Helvetica", size=12)
-    pdf.ln(8)
-    filas = [
-        ("Tag", asset.asset_tag),
-        ("Equipo", f"{asset.category} {asset.brand} {asset.model}"),
-        ("Serial", asset.serial_number or "N/A"),
-        ("Cantidad", f"{asset.quantity} {asset.unit}"),
-        ("Estado", asset.status or "-"),
-        ("Ubicación", asset.location or "-"),
-        ("Asignado a", asset.assigned_to or "No asignado"),
-    ]
-    for k, v in filas:
-        pdf.cell(190, 10, txt=_latin(f"{k}: {v}"), ln=True)
-    for k, v in (asset.specs or {}).items():
-        pdf.cell(190, 8, txt=_latin(f"  {k}: {v}"), ln=True)
-    pdf.ln(30)
-    pdf.cell(95, 10, txt="_________________________", ln=False)
-    pdf.cell(95, 10, txt="_________________________", ln=True)
-    pdf.cell(95, 10, txt="Firma Responsable TI", ln=False)
-    pdf.cell(95, 10, txt="Firma de Recibido", ln=True)
-    raw = pdf.output(dest="S")
-    pdf_bytes = raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
+        cfg = t.config
+    emp = session.get(Employee, asset.employee_id) if asset.employee_id else None
+    data = render_acta(session, cfg, emp, [asset])
     return StreamingResponse(
-        BytesIO(pdf_bytes), media_type="application/pdf",
+        BytesIO(data), media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=acta_{asset.asset_tag}.pdf"},
     )

@@ -62,6 +62,12 @@ class InventarioApi {
     return ItAsset.fromJson(r.data!);
   }
 
+  /// Huella barata del inventario: solo se recarga la lista si cambia.
+  Future<String> getVersion() async {
+    final r = await _dio.get<Map<String, dynamic>>('/inventario/version');
+    return (r.data?['v'] ?? '').toString();
+  }
+
   Future<Map<String, dynamic>> getStats() async {
     final r = await _dio.get<Map<String, dynamic>>('/inventario/stats');
     return r.data!;
@@ -72,8 +78,9 @@ class InventarioApi {
     return r.data!['tag'] as String;
   }
 
-  Future<ItAsset> crear(ItAssetCreate payload) async {
-    final r = await _dio.post<Map<String, dynamic>>('/inventario/', data: payload.toJson());
+  Future<ItAsset> crear(ItAssetCreate payload, {bool autoTag = false}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/inventario/',
+        data: payload.toJson(), queryParameters: autoTag ? {'auto_tag': true} : null);
     return ItAsset.fromJson(r.data!);
   }
 

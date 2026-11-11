@@ -27,11 +27,6 @@ class ItAsset {
   final int? employeeId;
   final DateTime createdAt;
   final bool isDraft;
-  final DateTime? purchaseDate;
-  final double? cost;
-  final String? supplier;
-  final String? invoiceNumber;
-  final DateTime? warrantyUntil;
   final Map<String, String> specs;
   final DateTime? deletedAt;
 
@@ -40,11 +35,8 @@ class ItAsset {
     required this.brand, required this.model, this.serialNumber, this.location, this.locationId,
     this.status, this.notes, this.images = const [], this.quantity = 1, this.unit = 'Unidad',
     this.assignedTo, this.employeeId, required this.createdAt, this.isDraft = false,
-    this.purchaseDate, this.cost, this.supplier, this.invoiceNumber, this.warrantyUntil,
     this.specs = const {}, this.deletedAt,
   });
-
-  static DateTime? _d(dynamic v) => v == null ? null : DateTime.tryParse(v as String);
 
   factory ItAsset.fromJson(Map<String, dynamic> j) => ItAsset(
         id: j['id'] as int,
@@ -65,11 +57,6 @@ class ItAsset {
         createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
         isDraft: j['is_draft'] as bool? ?? false,
         images: ((j['images'] as List<dynamic>?) ?? []).map((e) => ItAssetImage.fromJson(e as Map<String, dynamic>)).toList(),
-        purchaseDate: _d(j['purchase_date']),
-        cost: (j['cost'] as num?)?.toDouble(),
-        supplier: j['supplier'] as String?,
-        invoiceNumber: j['invoice_number'] as String?,
-        warrantyUntil: _d(j['warranty_until']),
         specs: ((j['specs'] as Map<String, dynamic>?) ?? {}).map((k, v) => MapEntry(k, v?.toString() ?? '')),
         deletedAt: j['deleted_at'] == null ? null : DateTime.parse(j['deleted_at'] as String).toLocal(),
       );
@@ -90,18 +77,12 @@ class ItAssetCreate {
   final int quantity;
   final String unit;
   final bool isDraft;
-  final DateTime? purchaseDate;
-  final double? cost;
-  final String? supplier;
-  final String? invoiceNumber;
-  final DateTime? warrantyUntil;
   final Map<String, String> specs;
 
   ItAssetCreate({
     required this.assetTag, required this.category, this.categoryId,
     required this.brand, required this.model, this.serialNumber, this.locationId,
     this.status, this.notes, this.quantity = 1, this.unit = 'Unidad', this.isDraft = false,
-    this.purchaseDate, this.cost, this.supplier, this.invoiceNumber, this.warrantyUntil,
     this.specs = const {},
   });
 
@@ -114,11 +95,6 @@ class ItAssetCreate {
     if (serialNumber != null && serialNumber!.trim().isNotEmpty) map['serial_number'] = serialNumber;
     if (status != null && status!.isNotEmpty) map['status'] = status;
     if (notes != null && notes!.trim().isNotEmpty) map['notes'] = notes;
-    if (purchaseDate != null) map['purchase_date'] = dateToApi(purchaseDate);
-    if (cost != null) map['cost'] = cost;
-    if (supplier != null && supplier!.trim().isNotEmpty) map['supplier'] = supplier;
-    if (invoiceNumber != null && invoiceNumber!.trim().isNotEmpty) map['invoice_number'] = invoiceNumber;
-    if (warrantyUntil != null) map['warranty_until'] = dateToApi(warrantyUntil);
     return map;
   }
 }

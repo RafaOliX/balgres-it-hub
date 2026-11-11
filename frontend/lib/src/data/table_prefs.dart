@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/it_asset.dart';
 
-String _d(DateTime? d) => d == null ? '—' : dateToApi(d)!;
 String _s(String? v) => (v == null || v.trim().isEmpty) ? '—' : v;
 
 class ColumnDef {
@@ -27,11 +26,6 @@ final List<ColumnDef> kBaseColumns = [
   ColumnDef('quantity', 'Cantidad', 100, (a) => '${a.quantity} ${a.unit}'),
   ColumnDef('status', 'Estado', 140, (a) => _s(a.status)),
   ColumnDef('created', 'Registrado', 120, (a) => a.createdAt.toString().substring(0, 10)),
-  ColumnDef('purchase', 'Fecha compra', 120, (a) => _d(a.purchaseDate)),
-  ColumnDef('cost', 'Costo', 100, (a) => a.cost == null ? '—' : '\$${a.cost!.toStringAsFixed(2)}'),
-  ColumnDef('supplier', 'Proveedor', 150, (a) => _s(a.supplier)),
-  ColumnDef('invoice', 'Factura', 120, (a) => _s(a.invoiceNumber)),
-  ColumnDef('warranty', 'Garantía hasta', 130, (a) => _d(a.warrantyUntil)),
   ColumnDef('notes', 'Notas', 240, (a) => _s(a.notes)),
 ];
 

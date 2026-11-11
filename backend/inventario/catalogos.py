@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fpdf import FPDF
 from pydantic import BaseModel
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from .common import current_user, location_paths
@@ -136,12 +137,27 @@ def listar_empleados(solo_activos: bool = False, session: Session = Depends(get_
     return list(session.exec(stmt).all())
 
 
+def _check_employee(session: Session, payload: EmployeeCreate, emp_id: int | None = None) -> str:
+    name = _norm(payload.name)
+    code = (payload.employee_code or "").strip().lower()
+    mail = (payload.email or "").strip().lower()
+    for e in session.exec(select(Employee)).all():
+        if e.id == emp_id:
+            continue
+        if code and (e.employee_code or "").strip().lower() == code:
+            raise HTTPException(409, detail=f"El código '{payload.employee_code}' ya lo usa {e.name}")
+        if mail and (e.email or "").strip().lower() == mail:
+            raise HTTPException(409, detail=f"El correo '{payload.email}' ya lo usa {e.name}")
+        if payload.active and payload.extension and e.active and (e.extension or "") == payload.extension:
+            raise HTTPException(409, detail=f"La extensión {payload.extension} ya la usa {e.name}")
+        if not code and not mail and _norm(e.name).lower() == name.lower():
+            raise HTTPException(409, detail=f"Ya existe un empleado llamado '{e.name}'. Si es otra persona, agrega código o correo.")
+    return name
+
+
 @router.post("/employees", response_model=EmployeeRead, status_code=201)
 def crear_empleado(payload: EmployeeCreate, session: Session = Depends(get_session)):
-    name = _norm(payload.name)
-    dup = session.exec(select(Employee).where(Employee.name.ilike(name))).first()
-    if dup:
-        raise HTTPException(409, detail=f"Ya existe el empleado '{dup.name}'")
+    name = _check_employee(session, payload)
     emp = Employee(**{**payload.model_dump(), "name": name})
     session.add(emp)
     session.commit()
@@ -154,10 +170,11 @@ def actualizar_empleado(emp_id: int, payload: EmployeeCreate, session: Session =
     emp = session.get(Employee, emp_id)
     if not emp:
         raise HTTPException(404, detail="Empleado no encontrado")
-    name = _norm(payload.name)
-    dup = session.exec(select(Employee).where(Employee.name.ilike(name))).first()
-    if dup and dup.id != emp_id:
-        raise HTTPException(409, detail=f"Ya existe el empleado '{dup.name}'")
+    name = _check_employee(session, payload, emp_id)
+    if emp.active and not payload.active:
+        n = len(_assigned(session, emp_id))
+        if n:
+            raise HTTPException(400, detail=f"Tiene {n} equipo(s) asignado(s). Usa 'Dar de baja' o devuélvelos primero.")
     renombrado = emp.name != name
     for k, v in payload.model_dump().items():
         setattr(emp, k, v)
@@ -220,46 +237,31 @@ def importar_empleados(session: Session = Depends(get_session)):
 # ------------------------------------------------------------------ dashboard
 @router.get("/dashboard")
 def dashboard(session: Session = Depends(get_session)):
-    hoy = date.today()
-    todos = session.exec(select(ItAsset).where(ItAsset.deleted_at.is_(None))).all()
-    finales = [a for a in todos if not a.is_draft]
+    """Agregados en SQL: no carga los activos en memoria."""
+    live = ItAsset.deleted_at.is_(None)
+    final = (live, ItAsset.is_draft == False)  # noqa: E712
 
-    por_estado: dict[str, int] = {}
-    por_categoria: dict[str, int] = {}
-    por_ubicacion: dict[str, int] = {}
-    for a in finales:
-        k = a.status or "Sin estado"
-        por_estado[k] = por_estado.get(k, 0) + 1
-        por_categoria[a.category] = por_categoria.get(a.category, 0) + 1
-        u = a.location or "Sin ubicación"
-        por_ubicacion[u] = por_ubicacion.get(u, 0) + 1
+    def count(*conds):
+        return session.exec(select(func.count()).select_from(ItAsset).where(*conds)).one()
 
-    garantias = sorted(
-        (
-            {
-                "tag": a.asset_tag,
-                "equipo": f"{a.category} {a.brand} {a.model}".strip(),
-                "vence": a.warranty_until.isoformat(),
-                "dias": (a.warranty_until - hoy).days,
-            }
-            for a in finales
-            if a.warranty_until and 0 <= (a.warranty_until - hoy).days <= 60
-        ),
-        key=lambda x: x["dias"],
-    )
-    asignados = sum(1 for a in finales if a.employee_id or a.assigned_to)
+    def group(col, label, limit=None):
+        key = func.coalesce(col, label)
+        q = select(key, func.count()).where(*final).group_by(key).order_by(func.count().desc())
+        if limit:
+            q = q.limit(limit)
+        return {k: n for k, n in session.exec(q).all()}
+
+    total = count(*final)
+    asignados = count(*final, or_(ItAsset.employee_id.is_not(None), ItAsset.assigned_to.is_not(None)))
     return {
-        "total": len(finales),
-        "borradores": len(todos) - len(finales),
-        "unidades_totales": sum(a.quantity or 0 for a in finales),
+        "total": total,
+        "borradores": count(live, ItAsset.is_draft == True),  # noqa: E712
+        "unidades_totales": int(session.exec(select(func.coalesce(func.sum(ItAsset.quantity), 0)).where(*final)).one()),
         "asignados": asignados,
-        "sin_asignar": len(finales) - asignados,
-        "costo_total": round(sum(a.cost or 0 for a in finales), 2),
-        "garantias_vencidas": sum(1 for a in finales if a.warranty_until and a.warranty_until < hoy),
-        "garantias_por_vencer": garantias,
-        "por_estado": por_estado,
-        "por_categoria": dict(sorted(por_categoria.items(), key=lambda kv: -kv[1])),
-        "por_ubicacion": dict(sorted(por_ubicacion.items(), key=lambda kv: -kv[1])[:8]),
+        "sin_asignar": total - asignados,
+        "por_estado": group(ItAsset.status, "Sin estado"),
+        "por_categoria": group(ItAsset.category, "Sin categoría"),
+        "por_ubicacion": group(ItAsset.location, "Sin ubicación", 8),
     }
 
 

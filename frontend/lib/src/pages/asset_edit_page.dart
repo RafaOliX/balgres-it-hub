@@ -17,12 +17,11 @@ class AssetEditPage extends ConsumerStatefulWidget {
 
 class _AssetEditPageState extends ConsumerState<AssetEditPage> {
   final _form = GlobalKey<FormState>();
-  late final TextEditingController _brand, _model, _serial, _notes, _quantity, _cost, _supplier, _invoice;
+  late final TextEditingController _brand, _model, _serial, _notes, _quantity;
   final Map<String, TextEditingController> _specCtrls = {};
   late String _status;
   late int? _locationId;
   bool _locTouched = false;
-  DateTime? _purchaseDate, _warrantyUntil;
   bool _saving = false;
   bool _dirty = false;
   String? _error;
@@ -42,13 +41,8 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
     _serial = _ctrl(a.serialNumber);
     _notes = _ctrl(a.notes);
     _quantity = _ctrl(a.quantity.toString());
-    _cost = _ctrl(a.cost?.toString());
-    _supplier = _ctrl(a.supplier);
-    _invoice = _ctrl(a.invoiceNumber);
     _status = a.status ?? 'Operativo';
     _locationId = a.locationId;
-    _purchaseDate = a.purchaseDate;
-    _warrantyUntil = a.warrantyUntil;
     a.specs.forEach((k, v) => _specCtrls[k] = _ctrl(v));
     _loadCategoryFields();
   }
@@ -69,7 +63,7 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
 
   @override
   void dispose() {
-    for (final c in [_brand, _model, _serial, _notes, _quantity, _cost, _supplier, _invoice, ..._specCtrls.values]) {
+    for (final c in [_brand, _model, _serial, _notes, _quantity, ..._specCtrls.values]) {
       c.dispose();
     }
     super.dispose();
@@ -90,11 +84,6 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
         'status': _status,
         'notes': _notes.text.trim(),
         'quantity': int.tryParse(_quantity.text) ?? 1,
-        'purchase_date': dateToApi(_purchaseDate),
-        'cost': parseCost(_cost.text),
-        'supplier': _supplier.text.trim(),
-        'invoice_number': _invoice.text.trim(),
-        'warranty_until': dateToApi(_warrantyUntil),
         'specs': collectSpecs(_specCtrls),
       };
       if (_locTouched) body['location_id'] = _locationId;
@@ -222,15 +211,6 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
                   ]),
                 ]),
                 FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
-                FormSection('Compra y garantía', [
-                  PurchaseFields(
-                    purchaseDate: _purchaseDate,
-                    warrantyUntil: _warrantyUntil,
-                    onPurchase: (d) => setState(() { _purchaseDate = d; _dirty = true; }),
-                    onWarranty: (d) => setState(() { _warrantyUntil = d; _dirty = true; }),
-                    cost: _cost, supplier: _supplier, invoice: _invoice, supplierHints: hints.suppliers,
-                  ),
-                ]),
                 FormSection('Ubicación y estado', [
                   if (a.locationId == null && a.location != null)
                     Padding(
