@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Deps del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
+    build-essential fonts-dejavu-core curl \
  && rm -rf /var/lib/apt/lists/*
 
 # Copiamos primero sólo los pyproject para cachear pip
@@ -12,6 +12,7 @@ COPY apps/core-api /app/apps/core-api
 COPY modules/inventario/backend /app/modules/inventario/backend
 
 # Instalar el core-api y el módulo inventario (path editable)
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN pip install --no-cache-dir -e /app/apps/core-api \
  && pip install --no-cache-dir -e /app/modules/inventario/backend
 

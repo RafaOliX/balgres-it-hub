@@ -36,7 +36,7 @@ final _router = GoRouter(
           path: '/inventario',
           builder: (_, __) => const InventarioPage(),
           routes: [
-            GoRoute(path: 'nuevo', builder: (_, __) => const AssetFormPage()),
+            GoRoute(path: 'nuevo', builder: (_, state) => AssetFormPage(template: state.extra is ItAsset ? state.extra as ItAsset : null)),
             GoRoute(
               path: 'detalle/:tag',
               builder: (_, state) => AssetDetailPage(assetTag: state.pathParameters['tag']!),

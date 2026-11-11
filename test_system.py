@@ -1,9 +1,10 @@
 import requests
 import json
+import os
 import sys
 
 BASE_URL = "http://localhost:8091/api/inventario"
-AUTH = ("admin", "Balgres2026!")
+AUTH = ("admin", os.environ["INV_PASS"])
 
 def test_api():
     print("--- Iniciando Pruebas del Sistema ---")
@@ -55,7 +56,9 @@ def test_api():
     # 7. Eliminar el Activo
     r = requests.delete(f"{BASE_URL}/TEST-999", auth=AUTH)
     assert r.status_code == 204
-    print("✅ Eliminación de Activo OK")
+    r = requests.delete(f"{BASE_URL}/TEST-999/purge", auth=AUTH)
+    assert r.status_code == 204
+    print("✅ Eliminación (papelera + purga) OK")
     
     print("--- Todas las pruebas pasaron exitosamente ---")
 
