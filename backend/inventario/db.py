@@ -74,6 +74,13 @@ def apply_migrations() -> None:
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS specs JSONB;"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_it_assets_deleted_at ON it_assets(deleted_at);"))
+        # empleados (fase 3)
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS employee_code VARCHAR(64);"))
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS position VARCHAR(128);"))
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(40);"))
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS extension VARCHAR(20);"))
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id);"))
+        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS notes TEXT;"))
         # Asegurar que NO haya índice único en el S/N
         # Asegurar que el S/N acepta Nulos y no tiene índice único
         conn.execute(text("ALTER TABLE it_assets ALTER COLUMN serial_number DROP NOT NULL;"))

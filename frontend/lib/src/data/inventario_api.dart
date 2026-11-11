@@ -126,8 +126,10 @@ class InventarioApi {
     );
   }
 
-  Future<void> descargarPdf(String tag) async {
-    final r = await _dio.get<List<int>>('/inventario/$tag/pdf', options: Options(responseType: ResponseType.bytes));
+  Future<void> descargarPdf(String tag, {int? templateId}) async {
+    final r = await _dio.get<List<int>>('/inventario/$tag/pdf',
+        queryParameters: templateId == null ? null : {'template_id': templateId},
+        options: Options(responseType: ResponseType.bytes));
     await FileSaver.instance.saveFile(
       name: 'acta_$tag',
       bytes: Uint8List.fromList(r.data!),
@@ -212,14 +214,64 @@ class InventarioApi {
     return (r.data ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<void> descargarActaEmpleado(int id, String name) async {
-    final r = await _dio.get<List<int>>('/inventario/employees/$id/pdf', options: Options(responseType: ResponseType.bytes));
+  Future<void> descargarActaEmpleado(int id, String name, {int? templateId}) async {
+    final r = await _dio.get<List<int>>('/inventario/employees/$id/pdf',
+        queryParameters: templateId == null ? null : {'template_id': templateId},
+        options: Options(responseType: ResponseType.bytes));
     await FileSaver.instance.saveFile(
       name: 'acta_${name.replaceAll(' ', '_')}',
       bytes: Uint8List.fromList(r.data!),
       ext: 'pdf',
       mimeType: MimeType.pdf,
     );
+  }
+
+  // ---- plantillas de acta
+  Future<List<ActaTemplate>> getActaTemplates() async {
+    final r = await _dio.get<List<dynamic>>('/inventario/acta-templates');
+    return (r.data ?? []).map((e) => ActaTemplate.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<ActaTemplate> crearActaTemplate(String name, Map<String, dynamic> config) async {
+    final r = await _dio.post<Map<String, dynamic>>('/inventario/acta-templates', data: {'name': name, 'config': config});
+    return ActaTemplate.fromJson(r.data!);
+  }
+
+  Future<ActaTemplate> actualizarActaTemplate(int id, String name, Map<String, dynamic> config) async {
+    final r = await _dio.put<Map<String, dynamic>>('/inventario/acta-templates/$id', data: {'name': name, 'config': config});
+    return ActaTemplate.fromJson(r.data!);
+  }
+
+  Future<void> eliminarActaTemplate(int id) async => await _dio.delete('/inventario/acta-templates/$id');
+
+  /// Sin empleado = hoja en blanco. [blank] deja la tabla vacía para escribir a mano.
+  Future<void> descargarActaPlantilla(int id, {int? employeeId, List<String>? tags, bool blank = false, String name = 'plantilla'}) async {
+    final r = await _dio.get<List<int>>('/inventario/acta-templates/$id/pdf',
+        queryParameters: {
+          if (employeeId != null) 'employee_id': employeeId,
+          if (tags != null && tags.isNotEmpty) 'tags': tags.join(','),
+          if (blank) 'blank': true,
+        },
+        options: Options(responseType: ResponseType.bytes));
+    await FileSaver.instance.saveFile(
+      name: name.replaceAll(' ', '_'), bytes: Uint8List.fromList(r.data!), ext: 'pdf', mimeType: MimeType.pdf);
+  }
+
+  // ---- empleados: baja, traspaso y exportación
+  Future<int> bajaEmpleado(int id, String notes) async {
+    final r = await _dio.post<Map<String, dynamic>>('/inventario/employees/$id/offboard', data: {'notes': notes.isEmpty ? null : notes});
+    return (r.data?['devueltos'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> traspasarEmpleado(int id, int toId, String notes) async {
+    final r = await _dio.post<Map<String, dynamic>>('/inventario/employees/$id/transfer',
+        data: {'to_employee_id': toId, 'notes': notes.isEmpty ? null : notes});
+    return (r.data?['traspasados'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> descargarEmpleadosExcel() async {
+    final r = await _dio.get<List<int>>('/inventario/employees/export', options: Options(responseType: ResponseType.bytes));
+    await FileSaver.instance.saveFile(name: 'empleados', bytes: Uint8List.fromList(r.data!), ext: 'xlsx', mimeType: MimeType.microsoftExcel);
   }
 
   Future<void> descargarEtiquetas([List<String>? tags]) async {

@@ -8,10 +8,14 @@ import '../data/inventario_api.dart';
 import '../data/providers.dart';
 import '../models/category.dart';
 import '../models/it_asset.dart';
+import '../ui/swiss.dart';
 import '../widgets/form_fields.dart';
+import '../widgets/search_select.dart';
 
 class AssetFormPage extends ConsumerStatefulWidget {
-  const AssetFormPage({super.key});
+  /// Si viene un activo, se usa como base (duplicar).
+  final ItAsset? template;
+  const AssetFormPage({super.key, this.template});
   @override
   ConsumerState<AssetFormPage> createState() => _AssetFormPageState();
 }
@@ -24,10 +28,12 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
   final _serial = TextEditingController();
   final _notes = TextEditingController();
   final _quantity = TextEditingController(text: '1');
+  final _copies = TextEditingController(text: '1');
   final _cost = TextEditingController();
   final _supplier = TextEditingController();
   final _invoice = TextEditingController();
   final Map<String, TextEditingController> _specCtrls = {};
+  static const _uniqueSpecs = {'ip', 'mac', 'hostname'};
 
   Category? _selectedCategory;
   String _unit = 'Unidad';
@@ -55,13 +61,91 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         _saveDraftSilently();
       }
     });
+    final t = widget.template;
+    if (t != null) WidgetsBinding.instance.addPostFrameCallback((_) => _applyTemplate(t));
   }
 
   void _markChanged() => _hasChanges = true;
 
-  ItAssetCreate _buildCreate(bool draft) => ItAssetCreate(
-        assetTag: _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
-        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: _serial.text.trim(),
+  void _snack(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  // ---------------------------------------------------------------- copiar datos de otro equipo
+  void _fill(ItAsset t) {
+    setState(() {
+      _brand.text = t.brand;
+      _model.text = t.model;
+      _supplier.text = t.supplier ?? '';
+      _invoice.text = t.invoiceNumber ?? '';
+      _cost.text = t.cost?.toString() ?? '';
+      _notes.text = t.notes ?? '';
+      _purchaseDate = t.purchaseDate;
+      _warrantyUntil = t.warrantyUntil;
+      _locationId = t.locationId;
+      _status = t.status ?? 'Operativo';
+      t.specs.forEach((k, v) {
+        if (_uniqueSpecs.contains(k.toLowerCase())) return; // IP, MAC y hostname no se repiten
+        final ctrl = _specCtrls.putIfAbsent(k, () => TextEditingController()..addListener(_markChanged));
+        ctrl.text = v;
+      });
+      _hasChanges = true;
+    });
+  }
+
+  Future<void> _applyTemplate(ItAsset t) async {
+    try {
+      final cats = await ref.read(categoriasListProvider.future);
+      final cat = cats.where((c) => c.id == t.categoryId).firstOrNull;
+      if (cat != null) await _onCategorySelected(cat);
+    } catch (_) {}
+    if (mounted) _fill(t);
+  }
+
+  ItAsset? _lastOf(Category cat, {String? brand, String? model}) {
+    final items = ref.read(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+    final l = items.where((a) {
+      if (a.isDraft || a.categoryId != cat.id) return false;
+      if (brand != null && a.brand.trim().toLowerCase() != brand.trim().toLowerCase()) return false;
+      if (model != null && a.model.trim().toLowerCase() != model.trim().toLowerCase()) return false;
+      return true;
+    }).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return l.firstOrNull;
+  }
+
+  void _copyLast() {
+    final cat = _selectedCategory;
+    if (cat == null) return;
+    final last = _lastOf(cat);
+    if (last == null) {
+      _snack('Aún no hay equipos registrados en esta categoría');
+      return;
+    }
+    _fill(last);
+    _snack('Datos copiados de ${last.assetTag}. Falta el S/N.');
+  }
+
+  /// Al elegir un modelo ya usado, completa solo lo que esté vacío.
+  void _onModelPicked(String model) {
+    final cat = _selectedCategory;
+    if (cat == null) return;
+    final ref0 = _lastOf(cat, brand: _brand.text, model: model);
+    if (ref0 == null) return;
+    setState(() {
+      if (_supplier.text.trim().isEmpty) _supplier.text = ref0.supplier ?? '';
+      ref0.specs.forEach((k, v) {
+        if (_uniqueSpecs.contains(k.toLowerCase())) return;
+        final ctrl = _specCtrls[k];
+        if (ctrl != null && ctrl.text.trim().isEmpty) ctrl.text = v;
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- guardado
+  ItAssetCreate _buildCreate(bool draft, {String? tag, bool noSerial = false}) => ItAssetCreate(
+        assetTag: tag ?? _tag.text.trim(), category: _selectedCategory!.name, categoryId: _selectedCategory!.id,
+        brand: _brand.text.trim(), model: _model.text.trim(), serialNumber: noSerial ? '' : _serial.text.trim(),
         locationId: _locationId, status: _status, notes: _notes.text.trim(),
         quantity: int.tryParse(_quantity.text) ?? 1, unit: _unit, isDraft: draft,
         purchaseDate: _purchaseDate, cost: parseCost(_cost.text), supplier: _supplier.text.trim(),
@@ -142,7 +226,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => AlertDialog(
-          title: const Text('Nueva Categoría'),
+          title: const Text('Nueva categoría'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre')),
@@ -171,7 +255,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   if (ctx.mounted) Navigator.pop(ctx);
                   _onCategorySelected(newCat);
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${apiError(e)}')));
+                  _snack('Error: ${apiError(e)}');
                 }
               },
               child: const Text('Crear'),
@@ -193,20 +277,43 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
-  Future<void> _submit() async {
+  /// [another]: tras guardar, deja el formulario listo para el siguiente equipo.
+  Future<void> _submit({bool another = false}) async {
     if (!_form.currentState!.validate() || _selectedCategory == null) return;
+    final cat = _selectedCategory!;
+    final copies = (int.tryParse(_copies.text.trim()) ?? 1).clamp(1, 50);
+    final asDraft = copies > 1 && cat.requiresSn && _serial.text.trim().isEmpty;
     setState(() => _saving = true);
     try {
       final api = ref.read(inventarioApiProvider);
+      final created = <String>[];
       if (_draftTag == null) {
-        final asset = await api.crear(_buildCreate(false));
-        if (_files.isNotEmpty) await api.subirImagenes(asset.assetTag, _files);
+        created.add((await api.crear(_buildCreate(asDraft))).assetTag);
       } else {
-        await api.actualizar(_draftTag!, _buildPatch(false));
-        if (_files.isNotEmpty) await api.subirImagenes(_draftTag!, _files);
+        await api.actualizar(_draftTag!, _buildPatch(asDraft));
+        created.add(_draftTag!);
+      }
+      for (var i = 1; i < copies; i++) {
+        final tag = await api.getSiguienteTag(cat.id);
+        created.add((await api.crear(_buildCreate(asDraft, tag: tag, noSerial: true))).assetTag);
+      }
+      if (_files.isNotEmpty) {
+        for (final t in created) {
+          await api.subirImagenes(t, _files);
+        }
       }
       ref.invalidate(inventarioListProvider);
-      if (mounted) context.pop();
+
+      final msg = copies > 1
+          ? '${created.length} equipos creados (${created.first} … ${created.last})${asDraft ? '. Quedaron como borradores: completa el S/N de cada uno.' : ''}'
+          : 'Guardado: ${created.first}';
+      if (another) {
+        _snack(msg);
+        _resetForNext();
+      } else {
+        _snack(msg);
+        if (mounted) context.pop();
+      }
     } catch (e) {
       final msg = apiError(e);
       final isTagError = msg.contains('Tag');
@@ -214,7 +321,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            icon: Icon(isTagError ? Icons.warning_amber_rounded : Icons.error_outline, color: isTagError ? Colors.orange : Colors.red, size: 40),
+            icon: Icon(isTagError ? Icons.warning_amber_rounded : Icons.error_outline, color: isTagError ? context.sw.warn : context.sw.bad, size: 40),
             title: Text(isTagError ? 'Tag duplicado' : 'No se pudo guardar'),
             content: Text(msg),
             actions: [
@@ -229,10 +336,25 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
     }
   }
 
+  void _resetForNext() {
+    setState(() {
+      _draftTag = null;
+      _autoSaved = false;
+      _hasChanges = false;
+      _serial.clear();
+      _files.clear();
+      _copies.text = '1';
+      _specCtrls.forEach((k, c) {
+        if (_uniqueSpecs.contains(k.toLowerCase())) c.clear();
+      });
+    });
+    _generarNuevoTag();
+  }
+
   @override
   void dispose() {
     _autosaveTimer?.cancel();
-    for (final c in [_tag, _brand, _model, _serial, _notes, _quantity, _cost, _supplier, _invoice, ..._specCtrls.values]) {
+    for (final c in [_tag, _brand, _model, _serial, _notes, _quantity, _copies, _cost, _supplier, _invoice, ..._specCtrls.values]) {
       c.dispose();
     }
     super.dispose();
@@ -240,11 +362,32 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.sw;
     final categoriasAsync = ref.watch(categoriasListProvider);
+    final hints = ref.watch(hintsProvider);
+    final busy = _saving || _cargandoTag;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nuevo activo'), elevation: 0.5,
-        actions: [if (_autoSaved) const Padding(padding: EdgeInsets.only(right: 16), child: Center(child: Text('Borrador guardado', style: TextStyle(color: Colors.green, fontSize: 12))))],
+      appBar: AppBar(title: Text(widget.template != null ? 'Duplicar activo' : 'Nuevo activo')),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(color: c.bg, border: Border(top: BorderSide(color: c.line)), boxShadow: softShadow(context)),
+        child: SafeArea(
+          top: false,
+          child: Align(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: Row(children: [
+                if (_autoSaved) Text('Borrador guardado', style: TextStyle(color: c.ok, fontSize: 12)),
+                const Spacer(),
+                OutlinedButton(onPressed: busy ? null : () => _submit(another: true), child: const Text('Guardar y crear otro')),
+                const SizedBox(width: 10),
+                FilledButton(onPressed: busy ? null : () => _submit(), child: Text(_saving ? 'Guardando…' : 'Guardar y finalizar')),
+              ]),
+            ),
+          ),
+        ),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -252,87 +395,51 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
           child: Form(
             key: _form,
             child: ListView(padding: const EdgeInsets.all(24), children: [
-              FormSection('Fotografía', [
-                GestureDetector(
-                  onTap: () => showModalBottomSheet(
-                    context: context,
-                    builder: (_) => SafeArea(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Tomar foto'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.camera); }),
-                        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Elegir de galería'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.gallery); }),
-                      ]),
-                    ),
-                  ),
-                  child: Container(
-                    height: 120, width: double.infinity,
-                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                    child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 32), SizedBox(height: 8), Text('Agregar fotos', style: TextStyle(color: Colors.grey))]),
-                  ),
-                ),
-                if (_files.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 100,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal, itemCount: _files.length, separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (_, i) => Stack(children: [
-                        FutureBuilder(
-                          future: _files[i].readAsBytes(),
-                          builder: (_, snap) => snap.hasData
-                              ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(snap.data!, width: 100, height: 100, fit: BoxFit.cover))
-                              : Container(width: 100, height: 100, color: Colors.grey[200]),
-                        ),
-                        Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 16), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () => setState(() => _files.removeAt(i)))),
-                      ]),
-                    ),
-                  ),
-                ],
-              ]),
               FormSection('Identificación', [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(
                     child: categoriasAsync.when(
                       loading: () => const LinearProgressIndicator(),
                       error: (e, _) => Text('Error: $e'),
-                      data: (cats) => DropdownButtonFormField<int>(
-                        value: _selectedCategory?.id, isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Categoría *'),
-                        items: cats.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
-                        onChanged: (id) => _onCategorySelected(cats.where((c) => c.id == id).firstOrNull),
-                        validator: (v) => v == null ? 'Requerido' : null,
+                      data: (cats) => SearchSelect<Category>(
+                        label: 'Categoría', required: true, allowClear: false, value: _selectedCategory, options: cats,
+                        display: (x) => x.name, searchText: (x) => x.prefix, subtitle: (x) => 'Prefijo ${x.prefix} · ${x.unit}',
+                        onChanged: _onCategorySelected,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filledTonal(onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear nueva'),
+                  IconButton.filledTonal(onPressed: _crearCategoriaRapida, icon: const Icon(Icons.add), tooltip: 'Crear categoría'),
                 ]),
-                const SizedBox(height: 16),
+                if (_selectedCategory != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(onPressed: _copyLast, icon: const Icon(Icons.content_copy, size: 16), label: Text('Copiar datos del último de ${_selectedCategory!.name}')),
+                  ),
+                const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
                     child: TextFormField(
                       controller: _tag, readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Asset Tag (Automático)', filled: true,
+                        labelText: 'Asset Tag (automático)',
                         suffixIcon: _cargandoTag ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : const Icon(Icons.lock, size: 18),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filledTonal(onPressed: _generarNuevoTag, icon: const Icon(Icons.refresh), tooltip: 'Regenerar Tag'),
+                  IconButton.filledTonal(onPressed: _generarNuevoTag, icon: const Icon(Icons.refresh), tooltip: 'Regenerar tag'),
                 ]),
                 if (_selectedCategory?.requiresSn == true) ...[
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _serial,
-                    decoration: const InputDecoration(labelText: 'N/S *'),
-                  ),
+                  TextFormField(controller: _serial, decoration: const InputDecoration(labelText: 'N/S *')),
                 ],
               ]),
               FormSection('Detalles del equipo', [
                 Row(children: [
-                  Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
+                  Expanded(child: SuggestField(controller: _brand, label: 'Marca', suggestions: () => hints.brands)),
                   const SizedBox(width: 16),
-                  Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
+                  Expanded(child: SuggestField(controller: _model, label: 'Modelo', suggestions: () => hints.modelsFor(_brand.text), onPicked: _onModelPicked)),
                 ]),
                 const SizedBox(height: 16),
                 Row(children: [
@@ -340,14 +447,23 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   const SizedBox(width: 16),
                   Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(_unit))),
                 ]),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: 360,
+                  child: TextFormField(
+                    controller: _copies,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Crear varios iguales (cantidad de equipos)', helperText: 'Tags consecutivos. Si pide S/N, quedan como borradores.'),
+                  ),
+                ),
               ]),
-              FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls)]),
+              FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
               FormSection('Compra y garantía', [
                 PurchaseFields(
                   purchaseDate: _purchaseDate, warrantyUntil: _warrantyUntil,
                   onPurchase: (d) => setState(() { _purchaseDate = d; _hasChanges = true; }),
                   onWarranty: (d) => setState(() { _warrantyUntil = d; _hasChanges = true; }),
-                  cost: _cost, supplier: _supplier, invoice: _invoice,
+                  cost: _cost, supplier: _supplier, invoice: _invoice, supplierHints: hints.suppliers,
                 ),
               ]),
               FormSection('Ubicación y estado', [
@@ -361,17 +477,45 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                 const SizedBox(height: 16),
                 TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 3),
                 const SizedBox(height: 8),
-                const Text('El responsable se asigna desde el detalle del activo (pestaña Asignaciones).', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                Text('El responsable se asigna desde el detalle del activo (pestaña Asignaciones).', style: TextStyle(color: c.muted, fontSize: 12)),
               ]),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 50,
-                child: FilledButton(
-                  onPressed: (_saving || _cargandoTag) ? null : _submit,
-                  child: _saving ? const Text('Guardando…', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)) : const Text('Guardar y Finalizar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              FormSection('Fotografía', [
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    builder: (_) => SafeArea(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Tomar foto'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.camera); }),
+                        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Elegir de galería'), onTap: () { Navigator.pop(context); _pickImages(ImageSource.gallery); }),
+                      ]),
+                    ),
+                  ),
+                  child: Container(
+                    height: 110, width: double.infinity,
+                    decoration: BoxDecoration(color: c.panel, borderRadius: BorderRadius.circular(12), border: Border.all(color: c.line)),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_outlined, color: c.muted, size: 30), const SizedBox(height: 8), Text('Agregar fotos', style: TextStyle(color: c.muted))]),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 40),
+                if (_files.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 100,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal, itemCount: _files.length, separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) => Stack(children: [
+                        FutureBuilder(
+                          future: _files[i].readAsBytes(),
+                          builder: (_, snap) => snap.hasData
+                              ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(snap.data!, width: 100, height: 100, fit: BoxFit.cover))
+                              : Container(width: 100, height: 100, color: c.panel),
+                        ),
+                        Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 16), style: IconButton.styleFrom(backgroundColor: c.bad), onPressed: () => setState(() => _files.removeAt(i)))),
+                      ]),
+                    ),
+                  ),
+                ],
+              ]),
+              const SizedBox(height: 24),
             ]),
           ),
         ),

@@ -36,6 +36,12 @@ class Employee(SQLModel, table=True):
     name: str = Field(max_length=128, index=True)
     email: Optional[str] = Field(default=None, max_length=128)
     department: Optional[str] = Field(default=None, max_length=128)
+    employee_code: Optional[str] = Field(default=None, max_length=64)
+    position: Optional[str] = Field(default=None, max_length=128)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    extension: Optional[str] = Field(default=None, max_length=20)
+    location_id: Optional[int] = Field(default=None, foreign_key="locations.id")
+    notes: Optional[str] = Field(default=None)
     active: bool = Field(default=True)
 
 
@@ -111,3 +117,11 @@ class ItAsset(SQLModel, table=True):
         back_populates="asset",
         sa_relationship_kwargs={"cascade": "all, delete-orphan", "lazy": "selectin", "order_by": "ItAssetImage.id"},
     )
+
+
+class ActaTemplate(SQLModel, table=True):
+    """Plantilla personalizable de actas / hojas en blanco."""
+    __tablename__ = "acta_templates"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=100)
+    config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))

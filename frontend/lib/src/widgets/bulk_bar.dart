@@ -6,6 +6,7 @@ import '../data/providers.dart';
 import '../data/table_prefs.dart';
 import '../models/it_asset.dart';
 import '../ui/swiss.dart';
+import 'search_select.dart';
 
 Future<T?> _pickOne<T>(BuildContext context, String title, String label, List<(T, String)> opts, String confirm) {
   T? sel;
@@ -16,12 +17,14 @@ Future<T?> _pickOne<T>(BuildContext context, String title, String label, List<(T
         title: Text(title),
         content: SizedBox(
           width: 400,
-          child: DropdownButtonFormField<T>(
-            value: sel,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: label),
-            items: [for (final o in opts) DropdownMenuItem<T>(value: o.$1, child: Text(o.$2, overflow: TextOverflow.ellipsis))],
-            onChanged: (v) => setM(() => sel = v),
+          child: SearchSelect<(T, String)>(
+            label: label,
+            required: true,
+            allowClear: false,
+            value: sel == null ? null : opts.where((o) => o.$1 == sel).firstOrNull,
+            options: opts,
+            display: (o) => o.$2,
+            onChanged: (o) => setM(() => sel = o?.$1),
           ),
         ),
         actions: [

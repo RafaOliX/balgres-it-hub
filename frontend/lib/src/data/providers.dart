@@ -62,3 +62,57 @@ final empleadosProvider = FutureProvider.autoDispose<List<Employee>>((ref) async
 final dashboardProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   return ref.watch(inventarioApiProvider).getDashboard();
 });
+
+final actaTemplatesProvider = FutureProvider.autoDispose<List<ActaTemplate>>((ref) async {
+  return ref.watch(inventarioApiProvider).getActaTemplates();
+});
+
+// ---------------------------------------------------------------- sugerencias de lo ya registrado
+List<String> _rank(Iterable<String?> values) {
+  final spell = <String, Map<String, int>>{};
+  for (final v in values) {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) continue;
+    final m = spell.putIfAbsent(t.toLowerCase(), () => <String, int>{});
+    m[t] = (m[t] ?? 0) + 1;
+  }
+  final ranked = spell.values.map((m) {
+    final best = m.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+    return (best, m.values.fold<int>(0, (a, b) => a + b));
+  }).toList()
+    ..sort((a, b) => b.$2.compareTo(a.$2));
+  return [for (final r in ranked) r.$1];
+}
+
+class Hints {
+  final List<String> brands, models, suppliers;
+  final Map<String, List<String>> _byBrand;
+  final Map<String, List<String>> specs;
+  const Hints(this.brands, this.models, this.suppliers, this._byBrand, this.specs);
+
+  /// Modelos de esa marca; si no hay, todos.
+  List<String> modelsFor(String brand) {
+    final k = brand.trim().toLowerCase();
+    if (k.isEmpty) return models;
+    final l = _byBrand[k];
+    return (l == null || l.isEmpty) ? models : l;
+  }
+}
+
+/// Marcas, modelos, proveedores y valores técnicos más usados (ordenados por frecuencia).
+final hintsProvider = Provider.autoDispose<Hints>((ref) {
+  final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+  final grouped = <String, List<String>>{};
+  final specVals = <String, List<String>>{};
+  for (final a in items) {
+    grouped.putIfAbsent(a.brand.trim().toLowerCase(), () => []).add(a.model);
+    a.specs.forEach((k, v) => specVals.putIfAbsent(k, () => []).add(v));
+  }
+  return Hints(
+    _rank(items.map((a) => a.brand)),
+    _rank(items.map((a) => a.model)),
+    _rank(items.map((a) => a.supplier)),
+    {for (final e in grouped.entries) e.key: _rank(e.value)},
+    {for (final e in specVals.entries) e.key: _rank(e.value)},
+  );
+});

@@ -6,6 +6,7 @@ import '../data/providers.dart';
 import '../models/it_asset.dart';
 import '../ui/swiss.dart';
 import '../widgets/form_fields.dart';
+import '../widgets/search_select.dart';
 
 class AssetEditPage extends ConsumerStatefulWidget {
   final ItAsset asset;
@@ -140,6 +141,7 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
   Widget build(BuildContext context) {
     final a = widget.asset;
     final c = context.sw;
+    final hints = ref.watch(hintsProvider);
     return PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
@@ -208,9 +210,9 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
                 ]),
                 FormSection('Detalles del equipo', [
                   Row(children: [
-                    Expanded(child: TextFormField(controller: _brand, decoration: const InputDecoration(labelText: 'Marca'))),
+                    Expanded(child: SuggestField(controller: _brand, label: 'Marca', suggestions: () => hints.brands)),
                     const SizedBox(width: 16),
-                    Expanded(child: TextFormField(controller: _model, decoration: const InputDecoration(labelText: 'Modelo'))),
+                    Expanded(child: SuggestField(controller: _model, label: 'Modelo', suggestions: () => hints.modelsFor(_brand.text))),
                   ]),
                   const SizedBox(height: 16),
                   Row(children: [
@@ -219,14 +221,14 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
                     Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(a.unit))),
                   ]),
                 ]),
-                FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls)]),
+                FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
                 FormSection('Compra y garantía', [
                   PurchaseFields(
                     purchaseDate: _purchaseDate,
                     warrantyUntil: _warrantyUntil,
                     onPurchase: (d) => setState(() { _purchaseDate = d; _dirty = true; }),
                     onWarranty: (d) => setState(() { _warrantyUntil = d; _dirty = true; }),
-                    cost: _cost, supplier: _supplier, invoice: _invoice,
+                    cost: _cost, supplier: _supplier, invoice: _invoice, supplierHints: hints.suppliers,
                   ),
                 ]),
                 FormSection('Ubicación y estado', [

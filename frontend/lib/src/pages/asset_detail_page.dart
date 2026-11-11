@@ -10,6 +10,9 @@ import '../models/category.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
 import '../ui/swiss.dart';
+import '../widgets/asset_card.dart';
+import '../widgets/search_select.dart';
+import 'acta_templates_page.dart';
 import 'asset_edit_page.dart';
 
 class AssetDetailPage extends ConsumerStatefulWidget {
@@ -93,8 +96,10 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
   }
 
   Future<void> _acta() async {
+    final t = await showActaPicker(context, title: 'Acta del equipo: elige la plantilla');
+    if (t == null || !mounted) return;
     try {
-      await ref.read(inventarioApiProvider).descargarPdf(_asset!.assetTag);
+      await ref.read(inventarioApiProvider).descargarPdf(_asset!.assetTag, templateId: t.id);
     } catch (e) {
       _snack('Error: ${apiError(e)}');
     }
@@ -140,12 +145,16 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
           content: SizedBox(
             width: 400,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
-                value: empId,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Empleado *'),
-                items: emps.map((e) => DropdownMenuItem(value: e.id, child: Text(e.department == null ? e.name : '${e.name} · ${e.department}', overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (v) => setM(() => empId = v),
+              SearchSelect<Employee>(
+                label: 'Empleado',
+                required: true,
+                allowClear: false,
+                value: emps.where((e) => e.id == empId).firstOrNull,
+                options: emps,
+                display: (e) => e.name,
+                searchText: (e) => '${e.department ?? ''} ${e.position ?? ''} ${e.email ?? ''} ${e.extension ?? ''}',
+                subtitle: (e) => [e.position, e.department].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+                onChanged: (e) => setM(() => empId = e?.id),
               ),
               const SizedBox(height: 12),
               TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas (opcional)')),
@@ -278,6 +287,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
                       _load(silent: true);
                     },
             ),
+            IconButton(icon: const Icon(Icons.copy_all_outlined), tooltip: 'Duplicar equipo', onPressed: _asset == null ? null : () => openNewAsset(context, template: _asset)),
             IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Etiqueta QR', onPressed: _asset == null ? null : _etiqueta),
             IconButton(icon: const Icon(Icons.picture_as_pdf_outlined), tooltip: 'Acta PDF', onPressed: _asset == null ? null : _acta),
             IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Enviar a papelera', onPressed: _asset == null ? null : _eliminar),
@@ -352,7 +362,19 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
       ),
       Kv('Ubicación', a.location ?? '—'),
       Kv('Estado', a.status ?? '—'),
-      Kv('Asignado a', a.assignedTo ?? '—'),
+      Kv.widget(
+        'Asignado a',
+        a.employeeId == null
+            ? Text(a.assignedTo ?? '—', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))
+            : InkWell(
+                onTap: () => context.push('/empleados/${a.employeeId}'),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(a.assignedTo ?? '', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.accent)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.open_in_new, size: 14, color: c.accent),
+                ]),
+              ),
+      ),
       Kv('Registrado', a.createdAt.toString().substring(0, 16)),
     ]);
 

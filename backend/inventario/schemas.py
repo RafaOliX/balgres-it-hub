@@ -68,9 +68,15 @@ class EmployeeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     email: Optional[str] = Field(default=None, max_length=128)
     department: Optional[str] = Field(default=None, max_length=128)
+    employee_code: Optional[str] = Field(default=None, max_length=64)
+    position: Optional[str] = Field(default=None, max_length=128)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    extension: Optional[str] = Field(default=None, max_length=20)
+    location_id: Optional[int] = None
+    notes: Optional[str] = None
     active: bool = True
 
-    @field_validator("email", "department")
+    @field_validator("email", "department", "employee_code", "position", "phone", "extension", "notes")
     @classmethod
     def _e(cls, v):
         return _blank_to_none(v)
@@ -82,6 +88,12 @@ class EmployeeRead(BaseModel):
     name: str
     email: Optional[str]
     department: Optional[str]
+    employee_code: Optional[str] = None
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    extension: Optional[str] = None
+    location_id: Optional[int] = None
+    notes: Optional[str] = None
     active: bool
 
 

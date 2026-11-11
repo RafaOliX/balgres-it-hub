@@ -15,9 +15,9 @@ Future<void> openAsset(BuildContext context, String tag) async {
 }
 
 /// Abre el alta y recarga la lista al volver (incluye borradores autoguardados).
-Future<void> openNewAsset(BuildContext context) async {
+Future<void> openNewAsset(BuildContext context, {ItAsset? template}) async {
   final container = ProviderScope.containerOf(context);
-  await context.push('/inventario/nuevo');
+  await context.push('/inventario/nuevo', extra: template);
   container.invalidate(inventarioListProvider);
 }
 

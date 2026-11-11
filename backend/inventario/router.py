@@ -13,10 +13,12 @@ from fpdf import FPDF
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, select
 
+from .actas import render_acta, seed_templates
+from .actas import router as actas_router
 from .catalogos import router as catalogos_router
 from .common import current_user, location_paths
 from .db import apply_migrations, engine, get_session
-from .models import Category, Employee, ItAsset, ItAssetAssignment, ItAssetHistory, ItAssetImage
+from .models import ActaTemplate, Category, Employee, ItAsset, ItAssetAssignment, ItAssetHistory, ItAssetImage
 from .schemas import (
     AssignmentRead,
     AssignRequest,
@@ -43,6 +45,7 @@ NOT_NULL_FIELDS = {"asset_tag", "category", "brand", "model", "quantity", "is_dr
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     apply_migrations()
+    seed_templates()
 
 
 # ------------------------------------------------------------------ helpers
@@ -170,6 +173,7 @@ async def health() -> dict[str, str]:
 
 # /locations, /employees, /dashboard
 router.include_router(catalogos_router)
+router.include_router(actas_router)
 
 
 # ---- categorías
@@ -676,8 +680,18 @@ def qr_png(asset_tag: str, session: Session = Depends(get_session)):
 
 
 @router.get("/{asset_tag}/pdf")
-def generar_pdf(asset_tag: str, session: Session = Depends(get_session)):
+def generar_pdf(asset_tag: str, template_id: int | None = None, session: Session = Depends(get_session)):
     asset = _get_or_404(session, asset_tag)
+    if template_id is not None:
+        t = session.get(ActaTemplate, template_id)
+        if not t:
+            raise HTTPException(404, detail="Plantilla no encontrada")
+        emp = session.get(Employee, asset.employee_id) if asset.employee_id else None
+        data = render_acta(session, t.config, emp, [asset])
+        return StreamingResponse(
+            BytesIO(data), media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=acta_{asset.asset_tag}.pdf"},
+        )
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", size=16, style="B")

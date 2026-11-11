@@ -215,3 +215,55 @@ def test_ficha_de_empleado(client, cat):
     assert [a["asset_tag"] for a in client.get(f"{BASE}/employees/{e['id']}/assets").json()] == ["MON-001"]
     assert len(client.get(f"{BASE}/employees/{e['id']}/history").json()) == 1
     assert client.get(f"{BASE}/employees/{e['id']}/pdf").content.startswith(b"%PDF")
+
+
+# ------------------------------------------------------------------ fase 3: empleados y actas
+def test_empleado_con_telefono_y_extension(client):
+    r = client.post(f"{BASE}/employees", json={"name": "Ana", "phone": "0991234567", "extension": "204", "position": "Analista"})
+    assert r.status_code == 201 and r.json()["extension"] == "204"
+    ov = client.get(f"{BASE}/employees/overview").json()
+    assert ov[0]["phone"] == "0991234567" and ov[0]["position"] == "Analista"
+    assert client.get(f"{BASE}/employees/export").status_code == 200
+
+
+def test_plantillas_de_acta_y_hoja_en_blanco(client, cat):
+    t = client.post(f"{BASE}/acta-templates", json={"name": "Mía", "config": {
+        "title": "Acta X", "employee_fields": ["name", "phone", "zzz"], "asset_columns": ["tag", "specs"],
+        "orientation": "L", "signatures": ["TI", "Recibe"],
+    }}).json()
+    assert t["config"]["employee_fields"] == ["name", "phone"]          # descarta campos inválidos
+
+    blanco = client.get(f"{BASE}/acta-templates/{t['id']}/pdf")
+    assert blanco.status_code == 200 and blanco.content.startswith(b"%PDF")
+
+    make_asset(client, "MON-001", cat, serial_number="S1")
+    e = client.post(f"{BASE}/employees", json={"name": "Ana", "extension": "204"}).json()
+    client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
+    for url in (f"{BASE}/employees/{e['id']}/pdf?template_id={t['id']}",
+                f"{BASE}/acta-templates/{t['id']}/pdf?employee_id={e['id']}&blank=true",
+                f"{BASE}/MON-001/pdf?template_id={t['id']}"):
+        r = client.get(url)
+        assert r.status_code == 200 and r.content.startswith(b"%PDF"), url
+
+    assert client.put(f"{BASE}/acta-templates/{t['id']}", json={"name": "Renombrada", "config": {}}).json()["name"] == "Renombrada"
+    assert client.delete(f"{BASE}/acta-templates/{t['id']}").status_code == 204
+    assert client.get(f"{BASE}/acta-templates/{t['id']}/pdf").status_code == 404
+
+
+def test_baja_y_traspaso_de_empleado(client, cat):
+    for i in (1, 2):
+        make_asset(client, f"MON-00{i}", cat, serial_number=f"S{i}")
+    ana = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
+    luis = client.post(f"{BASE}/employees", json={"name": "Luis"}).json()
+    for i in (1, 2):
+        client.post(f"{BASE}/MON-00{i}/assign", json={"employee_id": ana["id"]})
+
+    assert client.post(f"{BASE}/employees/{ana['id']}/transfer", json={"to_employee_id": ana["id"]}).status_code == 400
+    r = client.post(f"{BASE}/employees/{ana['id']}/transfer", json={"to_employee_id": luis["id"]})
+    assert r.json()["traspasados"] == 2
+    assert client.get(f"{BASE}/MON-001").json()["assigned_to"] == "Luis"
+
+    r = client.post(f"{BASE}/employees/{luis['id']}/offboard", json={})
+    assert r.json()["devueltos"] == 2
+    assert client.get(f"{BASE}/MON-001").json()["assigned_to"] is None
+    assert [x for x in client.get(f"{BASE}/employees").json() if x["id"] == luis["id"]][0]["active"] is False

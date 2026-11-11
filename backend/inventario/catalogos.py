@@ -1,15 +1,16 @@
 """Catálogos (ubicaciones, empleados) y dashboard."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fpdf import FPDF
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .common import location_paths
+from .common import current_user, location_paths
 from .db import get_session
-from .models import Employee, ItAsset, ItAssetAssignment, Location
+from .models import Employee, ItAsset, ItAssetAssignment, ItAssetHistory, Location
 from .schemas import EmployeeCreate, EmployeeRead, ItAssetRead, LocationCreate, LocationRead
 
 router = APIRouter()
@@ -276,8 +277,13 @@ def _assigned(session: Session, emp_id: int) -> list[ItAsset]:
     ).all())
 
 
-def _emp_dict(e: Employee, count: int) -> dict:
-    return {"id": e.id, "name": e.name, "email": e.email, "department": e.department, "active": e.active, "asset_count": count}
+def _emp_dict(e: Employee, count: int, paths: dict | None = None) -> dict:
+    return {
+        "id": e.id, "name": e.name, "email": e.email, "department": e.department, "active": e.active,
+        "asset_count": count, "employee_code": e.employee_code, "position": e.position, "phone": e.phone,
+        "extension": e.extension, "location_id": e.location_id, "notes": e.notes,
+        "location": (paths or {}).get(e.location_id) if e.location_id else None,
+    }
 
 
 def _latin(s) -> str:
@@ -285,6 +291,26 @@ def _latin(s) -> str:
 
 
 # IMPORTANTE: /overview va antes que /{emp_id}
+@router.get("/employees/export")
+def empleados_export(session: Session = Depends(get_session)):
+    import pandas as pd
+    rows = empleados_overview(session)
+    cols = ["Nombre", "Código", "Cargo", "Departamento", "Correo", "Teléfono", "Extensión", "Ubicación", "Activo", "Equipos"]
+    df = pd.DataFrame([{
+        "Nombre": r["name"], "Código": r["employee_code"], "Cargo": r["position"], "Departamento": r["department"],
+        "Correo": r["email"], "Teléfono": r["phone"], "Extensión": r["extension"], "Ubicación": r["location"],
+        "Activo": "Sí" if r["active"] else "No", "Equipos": r["asset_count"],
+    } for r in rows], columns=cols)
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as w:
+        df.to_excel(w, index=False, sheet_name="Empleados")
+    out.seek(0)
+    return StreamingResponse(
+        out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=empleados.xlsx"},
+    )
+
+
 @router.get("/employees/overview")
 def empleados_overview(session: Session = Depends(get_session)):
     counts: dict[int, int] = {}
@@ -293,13 +319,14 @@ def empleados_overview(session: Session = Depends(get_session)):
     )).all():
         counts[a.employee_id] = counts.get(a.employee_id, 0) + 1
     emps = session.exec(select(Employee).order_by(Employee.name)).all()
-    return [_emp_dict(e, counts.get(e.id, 0)) for e in emps]
+    paths = location_paths(session)
+    return [_emp_dict(e, counts.get(e.id, 0), paths) for e in emps]
 
 
 @router.get("/employees/{emp_id}")
 def empleado(emp_id: int, session: Session = Depends(get_session)):
     e = _emp_or_404(session, emp_id)
-    return _emp_dict(e, len([a for a in _assigned(session, emp_id) if not a.is_draft]))
+    return _emp_dict(e, len([a for a in _assigned(session, emp_id) if not a.is_draft]), location_paths(session))
 
 
 @router.get("/employees/{emp_id}/assets", response_model=list[ItAssetRead])
@@ -331,42 +358,64 @@ def empleado_historial(emp_id: int, session: Session = Depends(get_session)):
     return out
 
 
-@router.get("/employees/{emp_id}/pdf")
-def empleado_acta(emp_id: int, session: Session = Depends(get_session)):
+# ------------------------------------------------------------------ baja y traspaso
+class _NotesIn(BaseModel):
+    notes: str | None = None
+
+
+class _TransferIn(BaseModel):
+    to_employee_id: int
+    notes: str | None = None
+
+
+def _liberar(session: Session, a: ItAsset, ahora, notes: str | None, user: str, nuevo: Employee | None = None) -> None:
+    for x in session.exec(select(ItAssetAssignment).where(
+        ItAssetAssignment.asset_id == a.id, ItAssetAssignment.returned_at.is_(None)
+    )).all():
+        x.returned_at = ahora
+        x.return_notes = notes
+        session.add(x)
+    anterior = a.assigned_to
+    if nuevo is not None:
+        session.add(ItAssetAssignment(
+            asset_id=a.id, employee_id=nuevo.id, employee_name=nuevo.name,
+            assigned_at=ahora, delivered_by=user, notes=notes,
+        ))
+        a.employee_id, a.assigned_to = nuevo.id, nuevo.name
+    else:
+        a.employee_id, a.assigned_to = None, None
+    session.add(ItAssetHistory(asset_id=a.id, field_name="asignado_a", old_value=anterior, new_value=a.assigned_to, changed_by=user))
+    session.add(a)
+
+
+@router.post("/employees/{emp_id}/offboard")
+def empleado_baja(emp_id: int, payload: _NotesIn, session: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Devuelve todos sus equipos y lo deja inactivo."""
     emp = _emp_or_404(session, emp_id)
-    assets = [a for a in _assigned(session, emp_id) if not a.is_draft]
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=16, style="B")
-    pdf.cell(190, 10, txt=_latin("Acta de Entrega de Equipos TI"), ln=True, align="C")
-    pdf.set_font("Helvetica", size=10)
-    pdf.cell(190, 8, txt=_latin(f"Fecha: {datetime.now():%d/%m/%Y %H:%M}"), ln=True, align="C")
-    pdf.ln(6)
-    pdf.set_font("Helvetica", size=12)
-    pdf.cell(190, 8, txt=_latin(f"Empleado: {emp.name}"), ln=True)
-    if emp.department:
-        pdf.cell(190, 8, txt=_latin(f"Departamento: {emp.department}"), ln=True)
-    pdf.ln(4)
-    widths = (28, 82, 48, 32)
-    pdf.set_font("Helvetica", size=10, style="B")
-    for w, h in zip(widths, ("Tag", "Equipo", "S/N", "Cantidad")):
-        pdf.cell(w, 8, txt=h, border=1)
-    pdf.ln(8)
-    pdf.set_font("Helvetica", size=10)
-    if not assets:
-        pdf.cell(190, 8, txt="Sin equipos asignados", border=1, ln=True)
+    ahora = datetime.now(timezone.utc)
+    assets = _assigned(session, emp_id)
+    nota = (payload.notes or "").strip() or "Baja del empleado"
     for a in assets:
-        vals = (a.asset_tag, f"{a.category} {a.brand} {a.model}", a.serial_number or "N/A", f"{a.quantity} {a.unit}")
-        for w, v in zip(widths, vals):
-            pdf.cell(w, 8, txt=_latin(v)[: int(w / 2)], border=1)
-        pdf.ln(8)
-    pdf.ln(30)
-    pdf.set_font("Helvetica", size=12)
-    pdf.cell(95, 10, txt="_________________________", ln=False)
-    pdf.cell(95, 10, txt="_________________________", ln=True)
-    pdf.cell(95, 10, txt="Firma Responsable TI", ln=False)
-    pdf.cell(95, 10, txt="Firma de Recibido", ln=True)
-    raw = pdf.output(dest="S")
-    data = raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
-    return StreamingResponse(BytesIO(data), media_type="application/pdf",
-                             headers={"Content-Disposition": f"attachment; filename=acta_empleado_{emp.id}.pdf"})
+        _liberar(session, a, ahora, nota, user)
+    emp.active = False
+    session.add(emp)
+    session.commit()
+    return {"devueltos": len(assets)}
+
+
+@router.post("/employees/{emp_id}/transfer")
+def empleado_traspaso(emp_id: int, payload: _TransferIn, session: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Pasa todos los equipos de un empleado a otro."""
+    emp = _emp_or_404(session, emp_id)
+    dest = _emp_or_404(session, payload.to_employee_id)
+    if dest.id == emp.id:
+        raise HTTPException(400, detail="El destino es el mismo empleado")
+    if not dest.active:
+        raise HTTPException(400, detail="El empleado destino está inactivo")
+    ahora = datetime.now(timezone.utc)
+    nota = (payload.notes or "").strip() or f"Traspaso desde {emp.name}"
+    assets = _assigned(session, emp_id)
+    for a in assets:
+        _liberar(session, a, ahora, nota, user, nuevo=dest)
+    session.commit()
+    return {"traspasados": len(assets)}

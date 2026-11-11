@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../models/catalogs.dart';
 import '../ui/swiss.dart';
+import 'search_select.dart';
 
 class FormSection extends StatelessWidget {
   final String title;
@@ -41,10 +43,12 @@ class DateField extends StatelessWidget {
       );
 }
 
+/// Ubicación con búsqueda: escribe "rack" y trae "Informática › Sala › Rack 1".
 class LocationDropdown extends ConsumerWidget {
   final int? value;
   final ValueChanged<int?> onChanged;
-  const LocationDropdown({super.key, required this.value, required this.onChanged});
+  final String label;
+  const LocationDropdown({super.key, required this.value, required this.onChanged, this.label = 'Ubicación'});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,19 +56,15 @@ class LocationDropdown extends ConsumerWidget {
     return async.when(
       loading: () => const LinearProgressIndicator(),
       error: (e, _) => Text('Error: $e'),
-      data: (locs) {
-        final ids = locs.map((l) => l.id).toSet();
-        return DropdownButtonFormField<int?>(
-          value: ids.contains(value) ? value : null,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Ubicación'),
-          items: [
-            const DropdownMenuItem<int?>(value: null, child: Text('Sin ubicación')),
-            ...locs.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.fullName, overflow: TextOverflow.ellipsis))),
-          ],
-          onChanged: onChanged,
-        );
-      },
+      data: (locs) => SearchSelect<Location>(
+        label: label,
+        value: locs.where((l) => l.id == value).firstOrNull,
+        options: locs,
+        display: (l) => l.fullName,
+        subtitle: (l) => l.kind ?? '',
+        hint: 'Escribe para buscar: Informática, rack…',
+        onChanged: (l) => onChanged(l?.id),
+      ),
     );
   }
 }
@@ -77,9 +77,11 @@ class PurchaseFields extends StatelessWidget {
   final TextEditingController cost;
   final TextEditingController supplier;
   final TextEditingController invoice;
+  final List<String> supplierHints;
   const PurchaseFields({
     super.key, required this.purchaseDate, required this.warrantyUntil, required this.onPurchase,
     required this.onWarranty, required this.cost, required this.supplier, required this.invoice,
+    this.supplierHints = const [],
   });
 
   @override
@@ -93,7 +95,7 @@ class PurchaseFields extends StatelessWidget {
         Row(children: [
           Expanded(child: TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Costo', prefixText: '\$ '))),
           const SizedBox(width: 16),
-          Expanded(child: TextFormField(controller: supplier, decoration: const InputDecoration(labelText: 'Proveedor'))),
+          Expanded(child: SuggestField(controller: supplier, label: 'Proveedor', suggestions: () => supplierHints)),
         ]),
         const SizedBox(height: 16),
         TextFormField(controller: invoice, decoration: const InputDecoration(labelText: 'N° de factura')),
@@ -102,17 +104,18 @@ class PurchaseFields extends StatelessWidget {
 
 class SpecsFields extends StatelessWidget {
   final Map<String, TextEditingController> ctrls;
-  const SpecsFields({super.key, required this.ctrls});
+  final Map<String, List<String>> hints;
+  const SpecsFields({super.key, required this.ctrls, this.hints = const {}});
 
   @override
   Widget build(BuildContext context) {
     if (ctrls.isEmpty) {
-      return const Text('Esta categoría no tiene campos técnicos. Puedes definirlos en Categorías.', style: TextStyle(color: Colors.grey, fontSize: 13));
+      return Text('Esta categoría no tiene campos técnicos. Puedes definirlos en Categorías.', style: TextStyle(color: context.sw.muted, fontSize: 13));
     }
     return Wrap(
       spacing: 16, runSpacing: 16,
       children: ctrls.entries
-          .map((e) => SizedBox(width: 240, child: TextFormField(controller: e.value, decoration: InputDecoration(labelText: e.key))))
+          .map((e) => SizedBox(width: 240, child: SuggestField(controller: e.value, label: e.key, suggestions: () => hints[e.key] ?? const [])))
           .toList(),
     );
   }

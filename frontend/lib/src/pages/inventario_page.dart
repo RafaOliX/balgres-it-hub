@@ -22,7 +22,7 @@ import 'papelera_page.dart';
 
 List<PopupMenuEntry<String>> _menuItems() => const <PopupMenuEntry<String>>[
       PopupMenuItem(value: 'dashboard', child: Text('Dashboard')),
-      PopupMenuItem(value: 'catalogos', child: Text('Empleados y ubicaciones')),
+      PopupMenuItem(value: 'catalogos', child: Text('Ubicaciones')),
       PopupMenuDivider(),
       PopupMenuItem(value: 'labels', child: Text('Etiquetas QR (todas)')),
       PopupMenuItem(value: 'export', child: Text('Exportar Excel')),

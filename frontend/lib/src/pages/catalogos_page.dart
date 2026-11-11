@@ -1,270 +1,313 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/filters.dart';
 import '../data/inventario_api.dart';
 import '../data/providers.dart';
 import '../models/catalogs.dart';
+import '../models/it_asset.dart';
+import '../ui/swiss.dart';
+import '../widgets/search_select.dart';
 
-void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
+const _kKinds = ['Sede', 'Edificio', 'Piso', 'Área', 'Oficina', 'Cuarto de servidores', 'Rack', 'Bodega', 'Laboratorio', 'Sala de reuniones'];
 
-class CatalogosPage extends StatelessWidget {
+String _nextKind(String? k) {
+  final n = normalizeText(k ?? '');
+  if (n.contains('sede')) return 'Área';
+  if (n.contains('edificio')) return 'Piso';
+  if (n.contains('piso')) return 'Área';
+  if (n.contains('area')) return 'Oficina';
+  if (n.contains('oficina') || n.contains('servidores')) return 'Rack';
+  return '';
+}
+
+IconData _kindIcon(String? k) {
+  final n = normalizeText(k ?? '');
+  if (n.contains('sede') || n.contains('edificio')) return Icons.apartment;
+  if (n.contains('piso')) return Icons.layers_outlined;
+  if (n.contains('area')) return Icons.domain;
+  if (n.contains('oficina') || n.contains('sala')) return Icons.meeting_room_outlined;
+  if (n.contains('rack') || n.contains('servidor')) return Icons.dns_outlined;
+  if (n.contains('bodega')) return Icons.warehouse_outlined;
+  return Icons.place_outlined;
+}
+
+/// Ubicaciones como árbol: cada nivel tiene su propio "+" para agregar dentro.
+class CatalogosPage extends ConsumerStatefulWidget {
   const CatalogosPage({super.key});
-
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('Empleados y ubicaciones'), elevation: 0.5,
-            bottom: const TabBar(tabs: [Tab(text: 'Empleados'), Tab(text: 'Ubicaciones')]),
-          ),
-          body: const TabBarView(children: [_EmpleadosTab(), _UbicacionesTab()]),
-        ),
-      );
+  ConsumerState<CatalogosPage> createState() => _CatalogosPageState();
 }
 
-// ------------------------------------------------------------------ empleados
-class _EmpleadosTab extends ConsumerWidget {
-  const _EmpleadosTab();
+class _CatalogosPageState extends ConsumerState<CatalogosPage> {
+  final Set<int> _collapsed = {};
+  String _q = '';
 
-  Future<void> _dialog(BuildContext context, WidgetRef ref, {Employee? emp}) async {
-    final name = TextEditingController(text: emp?.name ?? '');
-    final email = TextEditingController(text: emp?.email ?? '');
-    final dept = TextEditingController(text: emp?.department ?? '');
-    bool active = emp?.active ?? true;
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setM) => AlertDialog(
-          title: Text(emp == null ? 'Nuevo empleado' : 'Editar empleado'),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *')),
-                const SizedBox(height: 12),
-                TextField(controller: email, decoration: const InputDecoration(labelText: 'Correo')),
-                const SizedBox(height: 12),
-                TextField(controller: dept, decoration: const InputDecoration(labelText: 'Departamento')),
-                SwitchListTile(title: const Text('Activo'), value: active, onChanged: (v) => setM(() => active = v)),
-              ]),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () async {
-                if (name.text.trim().isEmpty) return;
-                final body = {'name': name.text.trim(), 'email': email.text.trim(), 'department': dept.text.trim(), 'active': active};
-                try {
-                  final api = ref.read(inventarioApiProvider);
-                  if (emp == null) {
-                    await api.crearEmpleado(body);
-                  } else {
-                    await api.actualizarEmpleado(emp.id, body);
-                  }
-                  ref.invalidate(empleadosProvider);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } catch (e) {
-                  if (ctx.mounted) _snack(ctx, apiError(e));
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _snack(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(empleadosProvider);
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          FilledButton.icon(onPressed: () => _dialog(context, ref), icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Nuevo')),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.auto_fix_high, size: 18),
-            label: const Text('Importar desde activos'),
-            onPressed: () async {
-              try {
-                final r = await ref.read(inventarioApiProvider).importarEmpleados();
-                ref.invalidate(empleadosProvider);
-                if (context.mounted) _snack(context, '${r['empleados_creados']} empleados creados, ${r['activos_vinculados']} activos vinculados');
-              } catch (e) {
-                if (context.mounted) _snack(context, apiError(e));
-              }
-            },
-          ),
-        ]),
-      ),
-      Expanded(
-        child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (list) => list.isEmpty
-              ? const Center(child: Text('Sin empleados'))
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final e = list[i];
-                    return ListTile(
-                      leading: CircleAvatar(child: Text(e.name.isEmpty ? '?' : e.name[0].toUpperCase())),
-                      title: Text(e.name, style: TextStyle(color: e.active ? null : Colors.grey)),
-                      subtitle: Text([e.department, e.email, if (!e.active) 'Inactivo'].whereType<String>().join(' · ')),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _dialog(context, ref, emp: e)),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            try {
-                              await ref.read(inventarioApiProvider).eliminarEmpleado(e.id);
-                              ref.invalidate(empleadosProvider);
-                            } catch (err) {
-                              if (context.mounted) _snack(context, apiError(err));
-                            }
-                          },
-                        ),
-                      ]),
-                    );
-                  },
-                ),
-        ),
-      ),
-    ]);
+  Map<int?, List<Location>> _kids(List<Location> all) {
+    final m = <int?, List<Location>>{};
+    for (final l in all) {
+      m.putIfAbsent(l.parentId, () => []).add(l);
+    }
+    for (final v in m.values) {
+      v.sort((a, b) => normalizeText(a.name).compareTo(normalizeText(b.name)));
+    }
+    return m;
   }
-}
 
-// ------------------------------------------------------------------ ubicaciones
-class _UbicacionesTab extends ConsumerWidget {
-  const _UbicacionesTab();
+  Set<int> _descendants(int id, Map<int?, List<Location>> kids) {
+    final out = <int>{};
+    void go(int p) {
+      for (final c in kids[p] ?? const <Location>[]) {
+        if (out.add(c.id)) go(c.id);
+      }
+    }
+    go(id);
+    return out;
+  }
 
-  Future<void> _dialog(BuildContext context, WidgetRef ref, List<Location> all, {Location? loc}) async {
+  Future<void> _dialog(List<Location> all, {Location? loc, Location? parent}) async {
+    final kids = _kids(all);
+    final blocked = loc == null ? <int>{} : {loc.id, ..._descendants(loc.id, kids)};
     final name = TextEditingController(text: loc?.name ?? '');
-    String? kind = loc?.kind;
-    int? parentId = loc?.parentId;
-    const kinds = ['Sede', 'Área', 'Oficina', 'Bodega'];
+    final kind = TextEditingController(text: loc?.kind ?? (parent != null ? _nextKind(parent.kind) : ''));
+    Location? par = loc != null ? all.where((l) => l.id == loc.parentId).firstOrNull : parent;
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setM) => AlertDialog(
-          title: Text(loc == null ? 'Nueva ubicación' : 'Editar ubicación'),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre *')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  value: kind, decoration: const InputDecoration(labelText: 'Tipo'),
-                  items: [const DropdownMenuItem<String?>(value: null, child: Text('—')), ...kinds.map((k) => DropdownMenuItem<String?>(value: k, child: Text(k)))],
-                  onChanged: (v) => setM(() => kind = v),
+        builder: (ctx, setM) {
+          final c = ctx.sw;
+          final nm = name.text.trim();
+          final preview = [if (par != null) par!.fullName, if (nm.isNotEmpty) nm].join(' › ');
+          return AlertDialog(
+            title: Text(loc == null ? (par == null ? 'Nueva ubicación principal' : 'Agregar dentro de "${par!.name}"') : 'Editar ubicación'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  TextField(controller: name, autofocus: true, onChanged: (_) => setM(() {}), decoration: const InputDecoration(labelText: 'Nombre *', hintText: 'Ej: Rack 1')),
+                  const SizedBox(height: 12),
+                  SuggestField(controller: kind, label: 'Tipo (opcional)', suggestions: () => _kKinds),
+                  const SizedBox(height: 12),
+                  SearchSelect<Location>(
+                    label: 'Dentro de (vacío = nivel principal)',
+                    value: par,
+                    options: all.where((l) => !blocked.contains(l.id)).toList(),
+                    display: (l) => l.fullName,
+                    subtitle: (l) => l.kind ?? '',
+                    onChanged: (l) => setM(() => par = l),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('SE GUARDARÁ COMO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: c.muted)),
+                      const SizedBox(height: 4),
+                      Text(preview.isEmpty ? '—' : preview, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: () async {
+                  if (name.text.trim().isEmpty) return;
+                  final body = {'name': name.text.trim(), 'kind': kind.text.trim(), 'parent_id': par?.id};
+                  try {
+                    final api = ref.read(inventarioApiProvider);
+                    if (loc == null) {
+                      await api.crearUbicacion(body);
+                    } else {
+                      await api.actualizarUbicacion(loc.id, body);
+                    }
+                    ref.invalidate(ubicacionesProvider);
+                    ref.invalidate(inventarioListProvider);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(apiError(e))));
+                  }
+                },
+                child: const Text('Guardar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _delete(Location l) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar ubicación'),
+        content: Text('¿Eliminar "${l.fullName}"? Solo se puede si no tiene sububicaciones ni equipos.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: context.sw.bad, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(inventarioApiProvider).eliminarUbicacion(l.id);
+      ref.invalidate(ubicacionesProvider);
+    } catch (e) {
+      _snack(apiError(e));
+    }
+  }
+
+  Future<void> _unificar() async {
+    try {
+      final r = await ref.read(inventarioApiProvider).importarUbicaciones();
+      ref.invalidate(ubicacionesProvider);
+      ref.invalidate(inventarioListProvider);
+      _snack('${r['ubicaciones_creadas']} ubicaciones creadas, ${r['activos_vinculados']} activos vinculados');
+    } catch (e) {
+      _snack(apiError(e));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sw;
+    final async = ref.watch(ubicacionesProvider);
+    final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+    final all = async.valueOrNull ?? const <Location>[];
+    final kids = _kids(all);
+
+    final direct = <int, int>{};
+    for (final a in items) {
+      if (a.locationId != null && !a.isDraft) direct[a.locationId!] = (direct[a.locationId!] ?? 0) + 1;
+    }
+    final memo = <int, int>{};
+    int total(int id) => memo.putIfAbsent(id, () => (direct[id] ?? 0) + (kids[id] ?? const <Location>[]).fold<int>(0, (s, k) => s + total(k.id)));
+
+    // búsqueda: coincidencias + sus ancestros
+    Set<int>? visible;
+    final terms = normalizeText(_q.trim()).split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    if (terms.isNotEmpty) {
+      final byId = {for (final l in all) l.id: l};
+      visible = <int>{};
+      for (final l in all) {
+        final hay = normalizeText('${l.fullName} ${l.kind ?? ''}');
+        if (terms.every(hay.contains)) {
+          Location? cur = l;
+          while (cur != null && visible.add(cur.id)) {
+            cur = cur.parentId == null ? null : byId[cur.parentId];
+          }
+        }
+      }
+    }
+
+    final rows = <(Location, int)>[];
+    void walk(int? parent, int depth) {
+      for (final l in kids[parent] ?? const <Location>[]) {
+        if (visible != null && !visible.contains(l.id)) continue;
+        rows.add((l, depth));
+        if (visible != null || !_collapsed.contains(l.id)) walk(l.id, depth + 1);
+      }
+    }
+    walk(null, 0);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ubicaciones'),
+        actions: [
+          IconButton(icon: const Icon(Icons.unfold_less), tooltip: 'Contraer todo', onPressed: () => setState(() => _collapsed.addAll(all.where((l) => (kids[l.id] ?? const []).isNotEmpty).map((l) => l.id)))),
+          IconButton(icon: const Icon(Icons.unfold_more), tooltip: 'Expandir todo', onPressed: () => setState(_collapsed.clear)),
+          Padding(
+            padding: const EdgeInsets.only(right: 12, left: 4),
+            child: FilledButton.icon(onPressed: () => _dialog(all), icon: const Icon(Icons.add, size: 18), label: const Text('Ubicación principal')),
+          ),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 960),
+          child: ListView(padding: const EdgeInsets.all(24), children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
+              child: Row(children: [
+                Icon(Icons.account_tree_outlined, color: c.accent),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Organiza de lo general a lo particular: Sede → Área → Oficina → Rack. Usa el botón + de cada fila para agregar un nivel dentro de ella.',
+                      style: TextStyle(fontSize: 13, color: c.ink)),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int?>(
-                  value: all.any((l) => l.id == parentId) ? parentId : null, isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Dentro de (opcional)'),
-                  items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('Ninguna (nivel principal)')),
-                    ...all.where((l) => l.id != loc?.id).map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.fullName, overflow: TextOverflow.ellipsis))),
-                  ],
-                  onChanged: (v) => setM(() => parentId = v),
-                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(onPressed: _unificar, icon: const Icon(Icons.auto_fix_high, size: 18), label: const Text('Unificar desde activos')),
               ]),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () async {
-                if (name.text.trim().isEmpty) return;
-                final body = {'name': name.text.trim(), 'kind': kind, 'parent_id': parentId};
-                try {
-                  final api = ref.read(inventarioApiProvider);
-                  if (loc == null) {
-                    await api.crearUbicacion(body);
-                  } else {
-                    await api.actualizarUbicacion(loc.id, body);
-                  }
-                  ref.invalidate(ubicacionesProvider);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } catch (e) {
-                  if (ctx.mounted) _snack(ctx, apiError(e));
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
+            const SizedBox(height: 16),
+            TextField(onChanged: (v) => setState(() => _q = v), decoration: const InputDecoration(hintText: 'Buscar ubicación…', prefixIcon: Icon(Icons.search, size: 20))),
+            const SizedBox(height: 16),
+            if (async.isLoading && all.isEmpty)
+              const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+            else if (all.isEmpty)
+              Padding(padding: const EdgeInsets.all(40), child: EmptyState(icon: Icons.place_outlined, title: 'Aún no hay ubicaciones', subtitle: 'Crea la primera sede o unifícalas desde los activos.', action: 'Crear ubicación principal', onAction: () => _dialog(all)))
+            else
+              Container(
+                decoration: cardDeco(context),
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (final r in rows) _row(c, r.$1, r.$2, total(r.$1.id), (kids[r.$1.id] ?? const []).isNotEmpty, all),
+                  if (rows.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Sin resultados', style: TextStyle(color: c.muted))),
+                ]),
+              ),
+          ]),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(ubicacionesProvider);
-    final all = async.valueOrNull ?? const <Location>[];
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          FilledButton.icon(onPressed: () => _dialog(context, ref, all), icon: const Icon(Icons.add_location_alt_outlined, size: 18), label: const Text('Nueva')),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.auto_fix_high, size: 18),
-            label: const Text('Unificar desde activos'),
-            onPressed: () async {
-              try {
-                final r = await ref.read(inventarioApiProvider).importarUbicaciones();
-                ref.invalidate(ubicacionesProvider);
-                if (context.mounted) _snack(context, '${r['ubicaciones_creadas']} ubicaciones creadas, ${r['activos_vinculados']} activos vinculados');
-              } catch (e) {
-                if (context.mounted) _snack(context, apiError(e));
-              }
-            },
-          ),
-        ]),
-      ),
-      Expanded(
-        child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (list) => list.isEmpty
-              ? const Center(child: Text('Sin ubicaciones'))
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final l = list[i];
-                    return ListTile(
-                      leading: const Icon(Icons.place_outlined, color: Colors.blue),
-                      title: Text(l.fullName),
-                      subtitle: l.kind == null ? null : Text(l.kind!),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _dialog(context, ref, list, loc: l)),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            try {
-                              await ref.read(inventarioApiProvider).eliminarUbicacion(l.id);
-                              ref.invalidate(ubicacionesProvider);
-                            } catch (err) {
-                              if (context.mounted) _snack(context, apiError(err));
-                            }
-                          },
-                        ),
-                      ]),
-                    );
-                  },
-                ),
+  Widget _row(SwissColors c, Location l, int depth, int n, bool hasKids, List<Location> all) {
+    final collapsed = _collapsed.contains(l.id);
+    return Container(
+      padding: EdgeInsets.fromLTRB(12 + depth * 26.0, 6, 8, 6),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line)), color: depth == 0 ? c.panel.withValues(alpha: 0.6) : null),
+      child: Row(children: [
+        SizedBox(
+          width: 28,
+          child: hasKids
+              ? IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 20,
+                  tooltip: collapsed ? 'Expandir' : 'Contraer',
+                  icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more),
+                  onPressed: () => setState(() => collapsed ? _collapsed.remove(l.id) : _collapsed.add(l.id)),
+                )
+              : (depth > 0 ? Icon(Icons.subdirectory_arrow_right, size: 16, color: c.edge) : null),
         ),
-      ),
-    ]);
+        const SizedBox(width: 6),
+        Icon(_kindIcon(l.kind), size: 20, color: depth == 0 ? c.accent : c.muted),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: depth == 0 ? FontWeight.w800 : FontWeight.w600)),
+            if ((l.kind ?? '').isNotEmpty) Text(l.kind!, style: TextStyle(fontSize: 11, color: c.muted)),
+          ]),
+        ),
+        if (n > 0)
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+            child: Text('$n equipo${n == 1 ? '' : 's'}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.accent)),
+          ),
+        IconButton(icon: const Icon(Icons.add_circle_outline, size: 20), tooltip: 'Agregar dentro de "${l.name}"', onPressed: () => _dialog(all, parent: l)),
+        IconButton(icon: const Icon(Icons.edit_outlined, size: 20), tooltip: 'Editar o mover', onPressed: () => _dialog(all, loc: l)),
+        IconButton(icon: Icon(Icons.delete_outline, size: 20, color: c.bad), tooltip: 'Eliminar', onPressed: () => _delete(l)),
+      ]),
+    );
   }
 }
