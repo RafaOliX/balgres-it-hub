@@ -67,9 +67,6 @@ class _Content extends StatelessWidget {
     int n(String k) => (porEstado[k] as num?)?.toInt() ?? 0;
     double pr(int v) => total == 0 ? 0 : v / total;
     String pct(int v) => '${(pr(v) * 100).round()}%';
-    final garantias = (d['garantias_por_vencer'] as List?) ?? [];
-    final vencidas = (d['garantias_vencidas'] as num?)?.toInt() ?? 0;
-    final costo = (d['costo_total'] as num?)?.toDouble() ?? 0;
 
     final hero = <Widget>[
       HeroCard(title: 'Operativos', value: '${n('Operativo')}', caption: pct(n('Operativo')), progress: pr(n('Operativo')), color: dark ? const Color(0xFF1B2A9E) : kBrandNavy, icon: Icons.check_circle_outline),
@@ -83,7 +80,6 @@ class _Content extends StatelessWidget {
       KpiTile('Asignados', '${d['asignados']}', icon: Icons.person_outline, color: c.ok),
       KpiTile('Sin asignar', '${d['sin_asignar']}', icon: Icons.person_off_outlined, color: c.warn),
       KpiTile('Borradores', '${d['borradores']}', icon: Icons.edit_note, color: c.muted),
-      KpiTile('Costo total', '\$${costo.toStringAsFixed(0)}', icon: Icons.attach_money, color: c.ok),
     ];
 
     final maxCat = porCat.values.map((v) => (v as num).toInt()).fold<int>(1, (a, b) => b > a ? b : a);
@@ -121,28 +117,6 @@ class _Content extends StatelessWidget {
     ]);
 
     final side = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SwissSection('Garantías', [
-        Row(children: [
-          Expanded(child: Text(vencidas > 0 ? '$vencidas vencida(s)' : 'Sin garantías vencidas', style: TextStyle(fontWeight: FontWeight.w700, color: vencidas > 0 ? c.bad : c.ok))),
-        ]),
-        const SizedBox(height: 12),
-        if (garantias.isEmpty) Text('Nada vence en los próximos 60 días.', style: TextStyle(color: c.muted, fontSize: 13)),
-        for (final g in garantias.take(8))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            child: Row(children: [
-              Container(width: 4, height: 38, decoration: BoxDecoration(color: (g['dias'] as num) <= 15 ? c.bad : c.warn, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${g['tag']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  Text('${g['equipo']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.muted)),
-                ]),
-              ),
-              Text('${g['dias']} d', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: (g['dias'] as num) <= 15 ? c.bad : c.warn)),
-            ]),
-          ),
-      ]),
       SwissSection('Módulos', [
         _ModuleRow(index: '01', title: 'Inventario', subtitle: 'Activos de TI', onTap: () => context.go('/inventario')),
         const _ModuleRow(index: '02', title: 'Tickets', subtitle: 'Próximamente'),

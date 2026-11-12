@@ -15,5 +15,5 @@ fi
 if [[ "$WHAT" == "frontend" || "$WHAT" == "all" ]]; then
   echo "== Frontend (flutter test) =="
   docker run --rm -v "$ROOT/modules/inventario/frontend:/pkg" -w /pkg \
-    ghcr.io/cirruslabs/flutter:stable flutter test
+    ghcr.io/cirruslabs/flutter:stable sh -c "flutter pub get && flutter test"
 fi
