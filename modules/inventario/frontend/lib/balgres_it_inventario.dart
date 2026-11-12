@@ -1,0 +1,24 @@
+library balgres_it_inventario;
+
+export 'src/pages/inventario_page.dart';
+export 'src/pages/asset_form_page.dart';
+export 'src/pages/asset_detail_page.dart';
+export 'src/pages/asset_edit_page.dart';
+export 'src/pages/categories_page.dart';
+export 'src/pages/inventario_dashboard_page.dart';
+export 'src/pages/catalogos_page.dart';
+export 'src/pages/papelera_page.dart';
+export 'src/pages/empleados_page.dart';
+export 'src/pages/acta_templates_page.dart';
+export 'src/widgets/search_select.dart';
+export 'src/data/inventario_api.dart';
+export 'src/data/providers.dart';
+export 'src/data/filters.dart';
+export 'src/models/it_asset.dart';
+export 'src/models/it_asset_history.dart';
+export 'src/models/category.dart';
+export 'src/models/catalogs.dart';
+export 'src/widgets/asset_card.dart';
+export 'src/widgets/asset_thumbnail.dart';
+export 'src/widgets/form_fields.dart';
+export 'src/ui/swiss.dart';
