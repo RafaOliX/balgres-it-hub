@@ -494,3 +494,112 @@ Construido con **Flutter (Web/Android)**, **FastAPI (Python)** y **PostgreSQL**,
 
 **1. Clonar el repositorio CON sus submódulos:**
 ```bash
+
+
+
+## Backup y restore
+
+### Crear un backup
+
+```bash
+./scripts/backup.sh
+Genera en ~/backups/balgres-it-hub/:
+
+Archivo	Contenido
+db-YYYYMMDD-HHMM.sql.gz	Dump completo de PostgreSQL (~7 KB)
+uploads-YYYYMMDD-HHMM.tar.gz	Fotos de los activos (~27 MB, prefijo uploads/)
+env-YYYYMMDD-HHMM.prod	.env.prod con permisos 600 (contiene secretos)
+El script valida antes de dar OK:
+
+Backend y DB están Up/healthy.
+
+El dump no está vacío, es gzip válido, tiene ≥100 líneas.
+
+Contiene las 8 tablas esperadas (it_assets, employees, etc.).
+
+No contiene tablas residuales (contactos, etc.).
+
+El tar de uploads tiene ≥1 imagen.
+
+.env.prod tiene DB_PASSWORD y BASIC_AUTH_HASH.
+
+Si cualquier validación falla, borra los archivos parciales y aborta. No te deja un .sql.gz de 20 bytes como passaba antes.
+
+Restaurar
+bash
+./scripts/restore.sh YYYYMMDD-HHMM
+El script:
+
+Valida el backup antes de tocar nada (gzip válido, 8 tablas, imágenes).
+
+Pide confirmación (y minúscula).
+
+Crea backup de seguridad: db-pre-restore-YYYYMMDD-HHMM.sql.gz.
+
+Para el backend.
+
+DROP SCHEMA public CASCADE + restore del dump.
+
+Verifica que las 8 tablas existen en la DB post-restore.
+
+Borra el volumen balgres-it-hub_uploads, lo recrea, extrae el tar con --strip-components=1.
+
+Levanta el backend y verifica /docs.
+
+Si algo falla a mitad, imprime la ruta del backup de seguridad y aborta sin dejar la DB a medias.
+
+Backup manual (sin script)
+bash
+cd docker
+C=(docker compose -f docker-compose.prod.yml --env-file ../.env.prod)
+
+# DB
+"${C[@]}" exec -T db pg_dump -U inventario inventario_it | gzip > db.sql.gz
+
+# Uploads (el tar trae prefijo uploads/, por eso --strip-components=1 al restaurar)
+"${C[@]}" cp backend:/app/uploads - 2>/dev/null | gzip > uploads.tar.gz
+
+# Restore DB
+"${C[@]}" exec -T db psql -U inventario -d inventario_it \
+  -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO inventario;"
+gunzip -c db.sql.gz | "${C[@]}" exec -T db psql -U inventario -d inventario_it
+
+# Restore uploads
+docker volume rm -f balgres-it-hub_uploads
+docker volume create balgres-it-hub_uploads
+docker run --rm -v balgres-it-hub_uploads:/data -v "$PWD":/backup:ro \
+  alpine sh -c "cd /data && tar xzf /backup/uploads.tar.gz --strip-components=1"
+Verificar un restore
+bash
+curl -u admin:PASS http://localhost:8091/api/inventario/health
+curl -u admin:PASS http://localhost:8091/api/inventario/ | python3 -m json.tool | head -20
+Abrir http://localhost:8091/ en el navegador:
+
+Activos listados con fotos cargando.
+
+Menú ⋮ → Empleados con datos.
+
+Dashboard con conteos no-cero.
+
+Automatización (cron diario)
+bash
+crontab -e
+text
+0 2 * * * cd /home/devro/projects/work/balgres-it-hub && ./scripts/backup.sh >> /home/devro/backups/cron.log 2>&1
+Copia externa (obligatoria)
+Los backups viven en ~/backups/balgres-it-hub/ dentro de WSL. Si borras WSL, los pierdes. Copia semanalmente a Windows / Drive / USB:
+
+bash
+# Ajusta tu usuario de Windows
+rsync -av ~/backups/balgres-it-hub/ /mnt/c/Users/RafaelO/Desktop/balgres-backups/
+Retención
+El script no borra backups viejos automáticamente. Política manual sugerida:
+
+bash
+# Ver qué hay
+ls -lh ~/backups/balgres-it-hub/
+
+# Borrar backups con más de 30 días (excepto db-pre-restore-*)
+find ~/backups/balgres-it-hub -name "*-*.sql.gz" -mtime +30 ! -name "db-pre-restore-*" -delete
+find ~/backups/balgres-it-hub -name "*-*.tar.gz" -mtime +30 -delete
+Nunca borres sin tener copia externa verificada.
