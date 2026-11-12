@@ -15,14 +15,13 @@ ItAsset mk(
   String? assignedTo,
   String? status = 'Operativo',
   bool draft = false,
-  DateTime? warranty,
   Map<String, String> specs = const {},
   DateTime? created,
 }) =>
     ItAsset(
       id: tag.hashCode, assetTag: tag, category: category, categoryId: categoryId,
       brand: brand, model: model, serialNumber: sn, location: location, assignedTo: assignedTo,
-      status: status, isDraft: draft, warrantyUntil: warranty, specs: specs,
+      status: status, isDraft: draft, specs: specs,
       createdAt: created ?? DateTime(2026, 1, 1),
     );
 
@@ -64,25 +63,10 @@ void main() {
   });
 
   group('filtros', () {
-    final today = DateTime.now();
-    final d0 = DateTime(today.year, today.month, today.day);
-
     test('responsable asignado / sin asignar', () {
       final l = [mk('A-1', assignedTo: 'Ana'), mk('A-2')];
       expect(tags(applyFilter(l, const InventoryFilter(assign: AssignFilter.assigned))), ['A-1']);
       expect(tags(applyFilter(l, const InventoryFilter(assign: AssignFilter.unassigned))), ['A-2']);
-    });
-
-    test('garantía vencida, por vencer y sin registro', () {
-      final l = [
-        mk('V-1', warranty: d0.subtract(const Duration(days: 5))),
-        mk('S-1', warranty: d0.add(const Duration(days: 30))),
-        mk('L-1', warranty: d0.add(const Duration(days: 400))),
-        mk('N-1'),
-      ];
-      expect(tags(applyFilter(l, const InventoryFilter(warranty: WarrantyFilter.expired))), ['V-1']);
-      expect(tags(applyFilter(l, const InventoryFilter(warranty: WarrantyFilter.soon))), ['S-1']);
-      expect(tags(applyFilter(l, const InventoryFilter(warranty: WarrantyFilter.none))), ['N-1']);
     });
 
     test('ubicación "Sin ubicación" filtra los que no tienen', () {
@@ -117,7 +101,7 @@ void main() {
     test('toJson/fromJson conserva el filtro', () {
       const f = InventoryFilter(
         query: 'dell', statuses: {'Operativo'}, categoryIds: {1, 2}, locations: {'Sistemas'},
-        assign: AssignFilter.unassigned, warranty: WarrantyFilter.soon, sort: 'tag', groupBy: 'category',
+        assign: AssignFilter.unassigned, sort: 'tag', groupBy: 'category',
       );
       final r = InventoryFilter.fromJson(f.toJson());
       expect(r.toJson(), f.toJson());
