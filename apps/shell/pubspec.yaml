@@ -22,6 +22,8 @@ dependencies:
     path: ../../modules/contacts/frontend
   balgres_it_inventario:
     path: ../../modules/inventario/frontend
+  balgres_it_redes:
+    path: ../../modules/redes/frontend
 
 dev_dependencies:
   flutter_test:

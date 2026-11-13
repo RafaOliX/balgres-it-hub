@@ -1,5 +1,6 @@
 import 'package:balgres_it_contacts/balgres_it_contacts.dart';
 import 'package:balgres_it_inventario/balgres_it_inventario.dart';
+import 'package:balgres_it_redes/balgres_it_redes.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,6 +46,7 @@ final _router = GoRouter(
           ],
         ),
         GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
+        GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
         GoRoute(
           path: '/empleados',
           builder: (_, __) => const EmpleadosPage(),
@@ -103,6 +105,7 @@ class _BalgresItAppState extends State<BalgresItApp> {
         contactsApiProvider.overrideWithValue(ContactsApi(baseUrl: _apiBase)),
         employeeExtensionsProvider.overrideWithValue([inventarioEmployeeExtension]),
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
+        redesApiProvider.overrideWithValue(RedesApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
       ],
       child: const _ThemedApp(),

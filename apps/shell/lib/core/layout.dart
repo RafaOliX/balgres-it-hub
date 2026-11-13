@@ -12,10 +12,12 @@ class AppLayout extends StatelessWidget {
     _Dest(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Resumen', path: '/'),
     _Dest(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Inventario', path: '/inventario'),
     _Dest(icon: Icons.groups_outlined, selectedIcon: Icons.groups, label: 'Empleados', path: '/empleados'),
+    _Dest(icon: Icons.lan_outlined, selectedIcon: Icons.lan, label: 'Redes', path: '/redes'),
   ];
 
   int _indexFor(String location) {
     if (location.startsWith('/empleados')) return 2;
+    if (location.startsWith('/redes')) return 3;
     if (location.startsWith('/inventario') || location.startsWith('/categorias')) return 1;
     return 0;
   }
