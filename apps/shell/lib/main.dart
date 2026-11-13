@@ -1,3 +1,4 @@
+import 'package:balgres_it_contacts/balgres_it_contacts.dart';
 import 'package:balgres_it_inventario/balgres_it_inventario.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -99,6 +100,8 @@ class _BalgresItAppState extends State<BalgresItApp> {
   Widget build(BuildContext context) {
     return ProviderScope(
       overrides: [
+        contactsApiProvider.overrideWithValue(ContactsApi(baseUrl: _apiBase)),
+        employeeExtensionsProvider.overrideWithValue([inventarioEmployeeExtension]),
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
       ],

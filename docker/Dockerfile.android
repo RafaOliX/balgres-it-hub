@@ -6,6 +6,7 @@ RUN yes | sdkmanager --licenses
 WORKDIR /src
 
 COPY packages/ui /src/packages/ui
+COPY modules/contacts/frontend /src/modules/contacts/frontend
 COPY modules/inventario/frontend /src/modules/inventario/frontend
 COPY apps/shell /src/apps/shell
 

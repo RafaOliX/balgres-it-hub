@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+export 'package:balgres_it_contacts/balgres_it_contacts.dart' show empleadosProvider;
 import '../models/it_asset.dart';
 import '../models/category.dart';
 import 'inventario_api.dart';
@@ -54,10 +55,6 @@ final assetDraftProvider = StateProvider<AssetDraft>((ref) => AssetDraft());
 
 final ubicacionesProvider = FutureProvider.autoDispose<List<Location>>((ref) async {
   return ref.watch(inventarioApiProvider).getUbicaciones();
-});
-
-final empleadosProvider = FutureProvider.autoDispose<List<Employee>>((ref) async {
-  return ref.watch(inventarioApiProvider).getEmpleados();
 });
 
 final dashboardProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {

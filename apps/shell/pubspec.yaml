@@ -18,6 +18,8 @@ dependencies:
   file_saver: ^0.2.14
   shared_preferences: ^2.3.2
 
+  balgres_it_contacts:
+    path: ../../modules/contacts/frontend
   balgres_it_inventario:
     path: ../../modules/inventario/frontend
 

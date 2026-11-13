@@ -104,3 +104,9 @@ def test_pdf_con_caracteres_unicode(client):
     e = client.post(f"{CBASE}/employees", json={"name": "Łukasz Ñandú €"}).json()
     r = client.get(f"{BASE}/employees/{e['id']}/pdf")
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
+
+
+def test_contacts_lista_ubicaciones(client):
+    client.post(f"{BASE}/locations", json={"name": "Sede"})
+    r = client.get(f"{CBASE}/locations")
+    assert r.status_code == 200 and r.json()[0]["full_name"] == "Sede"

@@ -1,28 +1,18 @@
+import 'package:balgres_it_ui/balgres_it_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/filters.dart';
-import '../data/inventario_api.dart';
-import '../data/providers.dart';
-import '../models/catalogs.dart';
-import '../models/it_asset.dart';
-import '../ui/swiss.dart';
-import '../widgets/asset_card.dart';
-import '../widgets/asset_thumbnail.dart';
-import '../widgets/search_select.dart';
-import 'acta_templates_page.dart';
+import 'api.dart';
+import 'extensions.dart';
+import 'models.dart';
+import 'providers.dart';
 
 String _initials(String n) {
   final p = n.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
   if (p.isEmpty) return '?';
   return (p.first[0] + (p.length > 1 ? p.last[0] : '')).toUpperCase();
-}
-
-String _day(String? iso) {
-  final d = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
-  return d == null ? '—' : d.toString().substring(0, 10);
 }
 
 List<String> _uniq(Iterable<String?> v) {
@@ -79,7 +69,7 @@ Future<void> showEmployeeDialog(BuildContext context, WidgetRef ref, {Employee? 
 
   var locs = const <Location>[];
   try {
-    locs = await ref.read(ubicacionesProvider.future);
+    locs = await ref.read(contactLocationsProvider.future);
   } catch (_) {}
   Location? loc = locs.where((l) => l.id == emp?.locationId).firstOrNull;
   final all = ref.read(empleadosProvider).valueOrNull ?? const <Employee>[];
@@ -139,7 +129,7 @@ Future<void> showEmployeeDialog(BuildContext context, WidgetRef ref, {Employee? 
                 'extension': ext.text.trim(), 'location_id': loc?.id, 'notes': notes.text.trim(), 'active': active,
               };
               try {
-                final api = ref.read(inventarioApiProvider);
+                final api = ref.read(contactsApiProvider);
                 if (emp == null) {
                   await api.crearEmpleado(body);
                 } else {
@@ -186,27 +176,13 @@ class _EmpleadosPageState extends ConsumerState<EmpleadosPage> {
     ref.invalidate(empleadosProvider);
   }
 
-  Future<void> _plantillas() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => const ActaTemplatesPage()));
-    ref.invalidate(actaTemplatesProvider);
-  }
-
-  Future<void> _hojaEnBlanco() async {
-    final t = await showActaPicker(context, title: 'Hoja en blanco: elige la plantilla');
-    if (t == null) return;
-    try {
-      await ref.read(inventarioApiProvider).descargarActaPlantilla(t.id, name: t.name);
-    } catch (e) {
-      _snack('Error: ${apiError(e)}');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.sw;
     final async = ref.watch(empleadosProvider);
     final mobile = MediaQuery.sizeOf(context).width < 900;
     final all = async.valueOrNull ?? const <Employee>[];
+    final entries = [for (final x in ref.watch(employeeExtensionsProvider)) ...x.menu];
 
     final depts = _uniq(all.map((e) => e.department));
     final terms = normalizeText(_q.trim());
@@ -240,33 +216,20 @@ class _EmpleadosPageState extends ConsumerState<EmpleadosPage> {
           PopupMenuButton<String>(
             tooltip: 'Más opciones',
             onSelected: (v) async {
-              switch (v) {
-                case 'plantillas':
-                  await _plantillas();
-                case 'blank':
-                  await _hojaEnBlanco();
-                case 'excel':
-                  try {
-                    await ref.read(inventarioApiProvider).descargarEmpleadosExcel();
-                  } catch (e) {
-                    _snack('Error: ${apiError(e)}');
-                  }
-                case 'import':
-                  try {
-                    final r = await ref.read(inventarioApiProvider).importarEmpleados();
-                    ref.invalidate(empleadosProvider);
-                    _snack('${r['empleados_creados']} empleados creados, ${r['activos_vinculados']} activos vinculados');
-                  } catch (e) {
-                    _snack('Error: ${apiError(e)}');
-                  }
+              if (v == 'excel') {
+                try {
+                  await ref.read(contactsApiProvider).descargarEmpleadosExcel();
+                } catch (e) {
+                  _snack('Error: ${apiError(e)}');
+                }
+              } else {
+                await entries[int.parse(v)].onSelected(context, ref);
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'plantillas', child: Text('Plantillas de acta')),
-              PopupMenuItem(value: 'blank', child: Text('Imprimir hoja en blanco')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'excel', child: Text('Exportar a Excel')),
-              PopupMenuItem(value: 'import', child: Text('Importar desde activos')),
+            itemBuilder: (_) => <PopupMenuEntry<String>>[
+              for (var i = 0; i < entries.length; i++) PopupMenuItem<String>(value: '$i', child: Text(entries[i].label)),
+              if (entries.isNotEmpty) const PopupMenuDivider(),
+              const PopupMenuItem<String>(value: 'excel', child: Text('Exportar a Excel')),
             ],
           ),
           IconButton(icon: const Icon(Icons.refresh), tooltip: 'Recargar', onPressed: () => ref.invalidate(empleadosProvider)),
@@ -386,8 +349,6 @@ class EmpleadoDetailPage extends ConsumerStatefulWidget {
 
 class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
   Employee? _emp;
-  List<ItAsset> _assets = [];
-  List<Map<String, dynamic>> _history = [];
   bool _loading = true;
   String? _error;
 
@@ -401,20 +362,11 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  void _refreshAll() {
-    ref.invalidate(inventarioListProvider);
-    ref.invalidate(empleadosProvider);
-    ref.invalidate(dashboardProvider);
-  }
-
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() { _loading = true; _error = null; });
     try {
-      final api = ref.read(inventarioApiProvider);
-      final emp = await api.getEmpleado(widget.employeeId);
-      final assets = await api.getEmpleadoActivos(widget.employeeId);
-      final hist = await api.getEmpleadoHistorial(widget.employeeId);
-      if (mounted) setState(() { _emp = emp; _assets = assets; _history = hist; });
+      final emp = await ref.read(contactsApiProvider).getEmpleado(widget.employeeId);
+      if (mounted) setState(() => _emp = emp);
     } catch (e) {
       if (mounted) setState(() => _error = apiError(e));
     } finally {
@@ -422,205 +374,13 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
     }
   }
 
-  Future<String?> _askNotes(String title, String confirm, {String? message}) async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 400,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (message != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(message)),
-            TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Notas (opcional)')),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(confirm)),
-        ],
-      ),
-    );
-    return ok == true ? ctrl.text.trim() : null;
-  }
-
-  Future<void> _devolver(ItAsset a) async {
-    final notes = await _askNotes('Devolver ${a.assetTag}', 'Devolver');
-    if (notes == null) return;
-    try {
-      await ref.read(inventarioApiProvider).devolver(a.assetTag, notes);
-      _refreshAll();
-      await _load(silent: true);
-    } catch (e) {
-      _snack('Error: ${apiError(e)}');
-    }
-  }
-
-  Future<void> _devolverTodos() async {
-    if (_assets.isEmpty) return;
-    final notes = await _askNotes('Devolver los ${_assets.length} equipos', 'Devolver todos');
-    if (notes == null) return;
-    final api = ref.read(inventarioApiProvider);
-    var ok = 0, fail = 0;
-    for (final a in _assets) {
-      try {
-        await api.devolver(a.assetTag, notes);
-        ok++;
-      } catch (_) {
-        fail++;
-      }
-    }
-    _refreshAll();
-    await _load(silent: true);
-    _snack('Devueltos: $ok${fail > 0 ? ' · $fail con error' : ''}');
-  }
-
-  Future<void> _baja() async {
-    final e = _emp!;
-    final notes = await _askNotes('Dar de baja a ${e.name}', 'Dar de baja',
-        message: _assets.isEmpty ? 'No tiene equipos asignados. Quedará como inactivo.' : 'Se devolverán sus ${_assets.length} equipo(s) y quedará como inactivo.');
-    if (notes == null) return;
-    try {
-      final n = await ref.read(inventarioApiProvider).bajaEmpleado(e.id, notes);
-      _refreshAll();
-      await _load(silent: true);
-      _snack('Baja registrada. Equipos devueltos: $n');
-    } catch (err) {
-      _snack('Error: ${apiError(err)}');
-    }
-  }
-
-  Future<void> _traspasar() async {
-    final e = _emp!;
-    if (_assets.isEmpty) {
-      _snack('No tiene equipos para traspasar.');
-      return;
-    }
-    final emps = (await ref.read(empleadosProvider.future)).where((x) => x.active && x.id != e.id).toList();
-    Employee? to;
-    final notes = TextEditingController();
-    if (!mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setM) => AlertDialog(
-          title: Text('Traspasar ${_assets.length} equipo(s)'),
-          content: SizedBox(
-            width: 420,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              SearchSelect<Employee>(
-                label: 'Nuevo responsable', required: true, allowClear: false, value: to, options: emps,
-                display: (x) => x.name,
-                searchText: (x) => '${x.department ?? ''} ${x.position ?? ''} ${x.extension ?? ''}',
-                subtitle: (x) => [x.position, x.department].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
-                onChanged: (x) => setM(() => to = x),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notas (opcional)')),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: to == null ? null : () => Navigator.pop(ctx, true), child: const Text('Traspasar')),
-          ],
-        ),
-      ),
-    );
-    if (ok != true || to == null) return;
-    try {
-      final n = await ref.read(inventarioApiProvider).traspasarEmpleado(e.id, to!.id, notes.text.trim());
-      _refreshAll();
-      await _load(silent: true);
-      _snack('Traspasados $n equipo(s) a ${to!.name}');
-    } catch (err) {
-      _snack('Error: ${apiError(err)}');
-    }
-  }
-
-  Future<void> _asignar() async {
-    final emp = _emp!;
-    final all = await ref.read(inventarioListProvider.future);
-    final libres = all.where((a) => !a.isDraft && (a.assignedTo == null || a.assignedTo!.trim().isEmpty)).toList();
-    if (libres.isEmpty) {
-      _snack('No hay equipos sin asignar.');
-      return;
-    }
-    if (!mounted) return;
-    final picked = <String>{};
-    var q = '';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setM) {
-        final terms = normalizeText(q.trim()).split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-        final shown = libres.where((a) {
-          final hay = normalizeText('${a.assetTag} ${a.category} ${a.brand} ${a.model} ${a.serialNumber ?? ''} ${a.location ?? ''}');
-          return terms.every(hay.contains);
-        }).take(80).toList();
-        return AlertDialog(
-          title: Text('Asignar equipos a ${emp.name}'),
-          content: SizedBox(
-            width: 520,
-            height: 420,
-            child: Column(children: [
-              TextField(onChanged: (v) => setM(() => q = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 20), hintText: 'Buscar equipo sin asignar…')),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView(children: [
-                  for (final a in shown)
-                    CheckboxListTile(
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      value: picked.contains(a.assetTag),
-                      onChanged: (v) => setM(() => v == true ? picked.add(a.assetTag) : picked.remove(a.assetTag)),
-                      title: Text('${a.assetTag} · ${a.brand} ${a.model}'),
-                      subtitle: Text('${a.category}${a.location != null ? ' · ${a.location}' : ''}'),
-                    ),
-                ]),
-              ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: picked.isEmpty ? null : () => Navigator.pop(ctx, true), child: Text('Asignar ${picked.length}')),
-          ],
-        );
-      }),
-    );
-    if (ok != true) return;
-    final api = ref.read(inventarioApiProvider);
-    var done = 0, fail = 0;
-    for (final tag in picked) {
-      try {
-        await api.asignar(tag, emp.id, '');
-        done++;
-      } catch (_) {
-        fail++;
-      }
-    }
-    _refreshAll();
-    await _load(silent: true);
-    _snack('Asignados: $done${fail > 0 ? ' · $fail con error' : ''}');
-  }
-
-  /// [blank] = hoja para llenar a mano con los datos del empleado y la tabla vacía.
-  Future<void> _acta({bool blank = false}) async {
-    final t = await showActaPicker(context, title: blank ? 'Hoja a mano: elige la plantilla' : 'Acta de entrega: elige la plantilla');
-    if (t == null || !mounted) return;
-    try {
-      final api = ref.read(inventarioApiProvider);
-      if (blank) {
-        await api.descargarActaPlantilla(t.id, employeeId: _emp!.id, blank: true, name: 'hoja_${_emp!.name}');
-      } else {
-        await api.descargarActaEmpleado(_emp!.id, _emp!.name, templateId: t.id);
-      }
-    } catch (e) {
-      _snack('Error: ${apiError(e)}');
-    }
-  }
-
   Future<void> _editar() async {
     await showEmployeeDialog(context, ref, emp: _emp);
-    _refreshAll();
+    if (!mounted) return;
+    ref.invalidate(empleadosProvider);
+    for (final x in ref.read(employeeExtensionsProvider)) {
+      x.onChanged?.call(ref);
+    }
     await _load(silent: true);
   }
 
@@ -628,21 +388,24 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
   Widget build(BuildContext context) {
     final c = context.sw;
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final exts = ref.watch(employeeExtensionsProvider);
+    final emp = _emp;
+    final ctx = emp == null ? null : EmployeeCtx(emp, () => _load(silent: true));
     return Scaffold(
       appBar: AppBar(
-        title: Text(_emp?.name ?? 'Empleado'),
+        title: Text(emp?.name ?? 'Empleado'),
         actions: [
-          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Editar', onPressed: _emp == null ? null : _editar),
-          IconButton(icon: const Icon(Icons.picture_as_pdf_outlined), tooltip: 'Acta de entrega', onPressed: _emp == null ? null : () => _acta()),
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Editar', onPressed: emp == null ? null : _editar),
+          if (ctx != null) for (final x in exts) ...?x.appBarActions?.call(context, ctx),
           const SizedBox(width: 8),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
+          : _error != null || ctx == null
+              ? Center(child: Text(_error ?? 'Empleado no encontrado'))
               : ListView(padding: EdgeInsets.all(wide ? 32 : 16), children: [
-                  Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: _content(c))),
+                  Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: _content(c, ctx, exts))),
                 ]),
     );
   }
@@ -670,12 +433,8 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
     );
   }
 
-  Widget _content(SwissColors c) {
-    final e = _emp!;
-    final vigentes = {
-      for (final h in _history)
-        if (h['returned_at'] == null) h['asset_tag'] as String: h['assigned_at'] as String?
-    };
+  Widget _content(SwissColors c, EmployeeCtx ctx, List<EmployeeExtension> exts) {
+    final e = ctx.employee;
     final sub = [e.position, e.department].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -713,75 +472,14 @@ class _EmpleadoDetailPageState extends ConsumerState<EmpleadoDetailPage> {
             Text(e.notes!, style: TextStyle(fontSize: 13, color: c.muted)),
           ],
           const SizedBox(height: 18),
-          Wrap(spacing: 10, runSpacing: 10, children: [
-            FilledButton.icon(onPressed: e.active ? _asignar : null, icon: const Icon(Icons.add, size: 18), label: const Text('Asignar equipos')),
-            OutlinedButton.icon(onPressed: _assets.isEmpty ? null : _devolverTodos, icon: const Icon(Icons.keyboard_return, size: 18), label: const Text('Devolver todos')),
-            OutlinedButton.icon(onPressed: _assets.isEmpty ? null : _traspasar, icon: const Icon(Icons.swap_horiz, size: 18), label: const Text('Traspasar')),
-            OutlinedButton.icon(onPressed: () => _acta(), icon: const Icon(Icons.picture_as_pdf_outlined, size: 18), label: const Text('Acta de entrega')),
-            OutlinedButton.icon(onPressed: () => _acta(blank: true), icon: const Icon(Icons.edit_note, size: 18), label: const Text('Hoja a mano')),
+          Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            for (final x in exts) ...?x.actions?.call(context, ctx),
             OutlinedButton.icon(onPressed: _editar, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Editar datos')),
-            if (e.active)
-              TextButton.icon(style: TextButton.styleFrom(foregroundColor: c.bad), onPressed: _baja, icon: const Icon(Icons.person_off_outlined, size: 18), label: const Text('Dar de baja')),
           ]),
         ]),
       ),
-      const SizedBox(height: 20),
-      Wrap(spacing: 14, runSpacing: 14, children: [
-        SizedBox(width: 200, child: KpiTile('Equipos asignados', '${_assets.length}', icon: Icons.devices_outlined)),
-        SizedBox(width: 200, child: KpiTile('Movimientos', '${_history.length}', icon: Icons.swap_horiz, color: c.accent2)),
-      ]),
-      const SizedBox(height: 24),
-      SwissSection('Equipos asignados (${_assets.length})', [
-        if (_assets.isEmpty) Text('No tiene equipos asignados.', style: TextStyle(color: c.muted)),
-        for (final a in _assets)
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () async {
-              await openAsset(context, a.assetTag);
-              _load(silent: true);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
-              child: Row(children: [
-                AssetThumbnail(asset: a, size: 44),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(a.assetTag, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text('${a.category} · ${a.brand} ${a.model}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: c.muted)),
-                    Text('S/N ${a.serialNumber ?? 'N/A'} · desde ${_day(vigentes[a.assetTag])}', style: TextStyle(fontSize: 12, color: c.muted)),
-                  ]),
-                ),
-                StatusTag(status: a.status),
-                IconButton(icon: const Icon(Icons.keyboard_return, size: 20), tooltip: 'Devolver', onPressed: () => _devolver(a)),
-              ]),
-            ),
-          ),
-      ]),
-      SwissSection('Historial de custodia', [
-        if (_history.isEmpty) Text('Sin movimientos.', style: TextStyle(color: c.muted)),
-        for (final h in _history)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                width: 190,
-                child: Text('${_day(h['assigned_at'] as String?)} → ${h['returned_at'] == null ? 'vigente' : _day(h['returned_at'] as String?)}',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: h['returned_at'] == null ? c.ok : c.muted)),
-              ),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${h['asset_tag']}  ${h['equipo'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  if (h['notes'] != null) Text('Entrega: ${h['notes']}', style: TextStyle(fontSize: 12, color: c.muted)),
-                  if (h['return_notes'] != null) Text('Devolución: ${h['return_notes']}', style: TextStyle(fontSize: 12, color: c.muted)),
-                  Text('Entregó ${h['delivered_by']}', style: TextStyle(fontSize: 12, color: c.muted)),
-                ]),
-              ),
-            ]),
-          ),
-      ]),
+      for (final x in exts)
+        if (x.body != null) x.body!(context, ctx),
     ]);
   }
 }

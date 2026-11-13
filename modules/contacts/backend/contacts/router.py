@@ -8,8 +8,8 @@ from sqlmodel import Session, SQLModel, select
 from .common import location_paths
 from .db import apply_migrations, engine, get_session
 from .hooks import hooks
-from .models import Employee
-from .schemas import EmployeeCreate, EmployeeRead
+from .models import Employee, Location
+from .schemas import EmployeeCreate, EmployeeRead, LocationRead
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
@@ -60,6 +60,17 @@ def _check_employee(session: Session, payload: EmployeeCreate, emp_id: int | Non
         if not code and not mail and _norm(e.name).lower() == name.lower():
             raise HTTPException(409, detail=f"Ya existe un empleado llamado '{e.name}'. Si es otra persona, agrega código o correo.")
     return name
+
+
+@router.get("/locations", response_model=list[LocationRead])
+def listar_ubicaciones(session: Session = Depends(get_session)):
+    """Solo lectura: catálogo de sedes para los formularios. La administración vive en inventario."""
+    paths = location_paths(session)
+    locs = session.exec(select(Location)).all()
+    return sorted(
+        (LocationRead(id=l.id, name=l.name, parent_id=l.parent_id, kind=l.kind, full_name=paths.get(l.id, l.name)) for l in locs),
+        key=lambda x: x.full_name.lower(),
+    )
 
 
 @router.get("/employees", response_model=list[EmployeeRead])

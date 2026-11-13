@@ -6,11 +6,13 @@ WORKDIR /src
 COPY modules/inventario/frontend/pubspec.yaml /src/modules/inventario/frontend/pubspec.yaml
 COPY apps/shell/pubspec.yaml /src/apps/shell/pubspec.yaml
 COPY packages/ui/pubspec.yaml /src/packages/ui/pubspec.yaml
+COPY modules/contacts/frontend/pubspec.yaml /src/modules/contacts/frontend/pubspec.yaml
 
 WORKDIR /src/apps/shell
 RUN flutter pub get
 
 COPY packages/ui /src/packages/ui
+COPY modules/contacts/frontend /src/modules/contacts/frontend
 COPY modules/inventario/frontend /src/modules/inventario/frontend
 COPY apps/shell /src/apps/shell
 

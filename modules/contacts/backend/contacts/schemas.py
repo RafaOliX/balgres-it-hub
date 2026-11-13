@@ -55,3 +55,11 @@ class EmployeeRead(BaseModel):
     location_id: Optional[int] = None
     notes: Optional[str] = None
     active: bool
+
+
+class LocationRead(BaseModel):
+    id: int
+    name: str
+    parent_id: Optional[int]
+    kind: Optional[str]
+    full_name: str
