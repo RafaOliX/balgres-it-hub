@@ -8,3 +8,5 @@ __pycache__/
 .dart_tool/
 build/
 !.env.prod.example
+docker/backup_env.prod
+docker/backup_db.sql
