@@ -7,7 +7,7 @@ COMPOSE=(docker compose -f docker/docker-compose.prod.yml --env-file .env.prod)
 
 EXPECTED_TABLES=(
   acta_templates categories employees it_asset_assignments
-  it_asset_history it_asset_images it_assets locations
+  it_asset_history it_asset_images it_assets locations subnets ip_addresses
 )
 
 if [ $# -ne 1 ]; then

@@ -32,6 +32,7 @@ services:
       - ../apps/core-api:/app/apps/core-api
       - ../modules/contacts/backend:/app/modules/contacts/backend
       - ../modules/inventario/backend:/app/modules/inventario/backend
+      - ../modules/redes/backend:/app/modules/redes/backend
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   caddy:

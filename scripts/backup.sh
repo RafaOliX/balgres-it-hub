@@ -10,7 +10,7 @@ mkdir -p "$DEST"
 # Tablas que el dump DEBE contener. Si falta alguna, la DB está rota.
 EXPECTED_TABLES=(
   acta_templates categories employees it_asset_assignments
-  it_asset_history it_asset_images it_assets locations
+  it_asset_history it_asset_images it_assets locations subnets ip_addresses
 )
 # Tablas residuales que NO deben aparecer (restos de refactors cancelados).
 FORBIDDEN_TABLES=(contactos contactos_old empleado_old)

@@ -6,6 +6,9 @@ from contacts import init_db as contacts_init_db
 from contacts import router as contacts_router
 from inventario import init_db as inventario_init_db
 from inventario import router as inventario_router
+from redes import init_db as redes_init_db
+from redes import router as redes_router
+
 
 app = FastAPI(
     title="Balgres IT Hub API",
@@ -39,5 +42,7 @@ async def app_version():
 
 contacts_init_db()
 inventario_init_db()
+redes_init_db()
 app.include_router(contacts_router, prefix="/api")
 app.include_router(inventario_router, prefix="/api")
+app.include_router(redes_router, prefix="/api")

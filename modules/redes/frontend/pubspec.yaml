@@ -1,0 +1,10 @@
+name: balgres_it_redes
+environment:
+  sdk: ^3.5.0
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  provider: ^6.1.0
+  balgres_it_ui:
+    path: ../../../packages/ui

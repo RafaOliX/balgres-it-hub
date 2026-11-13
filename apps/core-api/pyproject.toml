@@ -16,6 +16,7 @@ dependencies = [
     # ─── módulos (path al submódulo montado dentro del contenedor) ───
     "balgres-it-inventario @ file:///app/modules/inventario/backend",
     "balgres-it-contacts @ file:///app/modules/contacts/backend",
+    "balgres-it-redes @ file:///app/modules/redes/backend",
 ]
 
 [tool.setuptools.packages.find]
