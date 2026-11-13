@@ -182,9 +182,9 @@ class ActaTemplateEditorPage extends ConsumerStatefulWidget {
 }
 
 class _ActaTemplateEditorPageState extends ConsumerState<ActaTemplateEditorPage> {
-  late final TextEditingController _name, _title, _intro, _footer, _rows, _sigs;
+  late final TextEditingController _name, _title, _intro, _footer, _rows, _sigs, _headerText, _pageFooter;
   late List<String> _emp, _cols;
-  late bool _land, _showDate;
+  late bool _land, _showDate, _showLogo, _showPageNums;
   bool _saving = false;
 
   @override
@@ -196,17 +196,21 @@ class _ActaTemplateEditorPageState extends ConsumerState<ActaTemplateEditorPage>
     _title = TextEditingController(text: (cfg['title'] as String?) ?? 'Acta de Entrega de Equipos TI');
     _intro = TextEditingController(text: (cfg['intro'] as String?) ?? 'Por medio de la presente se hace entrega de los equipos detallados a continuación a {empleado}.');
     _footer = TextEditingController(text: (cfg['footer'] as String?) ?? '');
+    _headerText = TextEditingController(text: (cfg['header_text'] as String?) ?? 'Departamento de TI');
+    _pageFooter = TextEditingController(text: (cfg['page_footer'] as String?) ?? '');
     _rows = TextEditingController(text: '${cfg['blank_rows'] ?? 10}');
     _sigs = TextEditingController(text: ((cfg['signatures'] as List?) ?? const ['Firma Responsable TI', 'Firma de Recibido']).join('\n'));
     _emp = t != null ? [...t.employeeFields] : ['name', 'position', 'department', 'extension'];
     _cols = t != null ? [...t.assetColumns] : ['tag', 'equipo', 'serial', 'quantity'];
     _land = cfg['orientation'] == 'L';
     _showDate = (cfg['show_date'] as bool?) ?? true;
+    _showLogo = (cfg['show_logo'] as bool?) ?? true;
+    _showPageNums = (cfg['show_page_numbers'] as bool?) ?? true;
   }
 
   @override
   void dispose() {
-    for (final c in [_name, _title, _intro, _footer, _rows, _sigs]) {
+    for (final c in [_name, _title, _intro, _footer, _rows, _sigs, _headerText, _pageFooter]) {
       c.dispose();
     }
     super.dispose();
@@ -222,6 +226,10 @@ class _ActaTemplateEditorPageState extends ConsumerState<ActaTemplateEditorPage>
         'blank_rows': int.tryParse(_rows.text.trim()) ?? 10,
         'signatures': _sigs.text.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
         'footer': _footer.text.trim(),
+        'show_logo': _showLogo,
+        'header_text': _headerText.text.trim(),
+        'page_footer': _pageFooter.text.trim(),
+        'show_page_numbers': _showPageNums,
       };
 
   Future<void> _save({bool preview = false}) async {
@@ -312,6 +320,13 @@ class _ActaTemplateEditorPageState extends ConsumerState<ActaTemplateEditorPage>
                 const SizedBox(width: 20),
                 Expanded(child: SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Mostrar fecha'), value: _showDate, onChanged: (v) => setState(() => _showDate = v))),
               ]),
+            ]),
+            SwissSection('Encabezado y pie de página', [
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Mostrar logo de Balgres'), value: _showLogo, onChanged: (v) => setState(() => _showLogo = v)),
+              TextField(controller: _headerText, decoration: const InputDecoration(labelText: 'Texto del encabezado', helperText: 'Aparece a la derecha del logo en cada página.')),
+              const SizedBox(height: 16),
+              TextField(controller: _pageFooter, decoration: const InputDecoration(labelText: 'Texto del pie de página', helperText: 'Se repite en todas las páginas.')),
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Numerar páginas (Página 1/2)'), value: _showPageNums, onChanged: (v) => setState(() => _showPageNums = v)),
             ]),
             SwissSection('Datos del empleado', [
               Text('Toca para activar o quitar. Aparecen en el orden en que los eliges.', style: TextStyle(color: c.muted, fontSize: 13)),

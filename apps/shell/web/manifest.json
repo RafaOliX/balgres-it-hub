@@ -1,6 +1,6 @@
 {
-    "name": "balgres_it_shell",
-    "short_name": "balgres_it_shell",
+    "name": "Balgres IT",
+    "short_name": "Balgres IT",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
