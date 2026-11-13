@@ -9,11 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copiamos primero sólo los pyproject para cachear pip
 COPY apps/core-api /app/apps/core-api
+COPY modules/contacts/backend /app/modules/contacts/backend
 COPY modules/inventario/backend /app/modules/inventario/backend
 
 # Instalar el core-api y el módulo inventario (path editable)
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN pip install --no-cache-dir -e /app/apps/core-api \
+ && pip install --no-cache-dir -e /app/modules/contacts/backend \
  && pip install --no-cache-dir -e /app/modules/inventario/backend
 
 # Copiamos el resto (si en dev montamos volumen, esto no afecta)

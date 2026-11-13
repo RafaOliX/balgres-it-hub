@@ -1,26 +1,13 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:balgres_it_ui/text.dart';
+
+export 'package:balgres_it_ui/text.dart' show normalizeText;
 
 import '../models/it_asset.dart';
 
 const kNoLocation = 'Sin ubicación';
-
-// ------------------------------------------------------------------ texto
-const _from = 'áàäâãéèëêíìïîóòöôõúùüûñç';
-const _to = 'aaaaaeeeeiiiiooooouuuunc';
-final _accentMap = <String, String>{
-  for (var i = 0; i < _from.length; i++) _from[i]: _to[i],
-};
-
-/// Minúsculas y sin tildes, para búsquedas tolerantes.
-String normalizeText(String s) {
-  final b = StringBuffer();
-  for (final ch in s.toLowerCase().split('')) {
-    b.write(_accentMap[ch] ?? ch);
-  }
-  return b.toString();
-}
 
 T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
   for (final v in values) {

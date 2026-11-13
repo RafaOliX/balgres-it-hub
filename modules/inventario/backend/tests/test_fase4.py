@@ -2,7 +2,7 @@ import io
 
 import pandas as pd
 
-from conftest import BASE, make_asset
+from conftest import BASE, CBASE, make_asset
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -36,7 +36,7 @@ def test_version_cambia_con_los_datos(client, cat):
 
 
 def test_empleados_duplicados_y_formatos(client):
-    post = lambda **kw: client.post(f"{BASE}/employees", json=kw)  # noqa: E731
+    post = lambda **kw: client.post(f"{CBASE}/employees", json=kw)  # noqa: E731
     assert post(name="Ana Pérez", employee_code="E1", extension="204").status_code == 201
     assert post(name="Ana Pérez").status_code == 409                       # homónimo sin dato que distinga
     assert post(name="Ana Pérez", employee_code="E2").status_code == 201   # homónimo distinguible
@@ -48,19 +48,19 @@ def test_empleados_duplicados_y_formatos(client):
 
 def test_no_inactivar_empleado_con_equipos(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
     client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
-    r = client.put(f"{BASE}/employees/{e['id']}", json={"name": "Ana", "active": False})
+    r = client.put(f"{CBASE}/employees/{e['id']}", json={"name": "Ana", "active": False})
     assert r.status_code == 400
 
 
 def test_papelera_cierra_la_custodia(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
     client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
     client.delete(f"{BASE}/MON-001")
     assert all(x["returned_at"] for x in client.get(f"{BASE}/MON-001/assignments").json())
-    assert client.get(f"{BASE}/employees/overview").json()[0]["asset_count"] == 0
+    assert client.get(f"{CBASE}/employees/overview").json()[0]["asset_count"] == 0
 
 
 def _xlsx(rows):
@@ -101,6 +101,6 @@ def test_imagen_corrupta_415(client, cat):
 
 
 def test_pdf_con_caracteres_unicode(client):
-    e = client.post(f"{BASE}/employees", json={"name": "Łukasz Ñandú €"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Łukasz Ñandú €"}).json()
     r = client.get(f"{BASE}/employees/{e['id']}/pdf")
     assert r.status_code == 200 and r.content.startswith(b"%PDF")

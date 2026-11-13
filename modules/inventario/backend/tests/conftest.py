@@ -11,12 +11,14 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
+from contacts import router as contacts_router  # noqa: E402
 from inventario import router  # noqa: E402
 from inventario.db import engine  # noqa: E402
 
 assert engine.dialect.name == "sqlite", "los tests deben correr contra SQLite"
 
 BASE = "/api/inventario"
+CBASE = "/api/contacts"
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +32,7 @@ def _fresh_db():
 def client():
     app = FastAPI()
     app.include_router(router, prefix="/api")
+    app.include_router(contacts_router, prefix="/api")
     return TestClient(app)
 
 

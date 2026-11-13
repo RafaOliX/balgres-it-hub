@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from contacts import init_db as contacts_init_db
+from contacts import router as contacts_router
 from inventario import init_db as inventario_init_db
 from inventario import router as inventario_router
 
@@ -35,5 +37,7 @@ async def app_version():
         "apk_url": "/apk/app-release.apk" # Ruta relativa servida por Caddy
     }
 
+contacts_init_db()
 inventario_init_db()
+app.include_router(contacts_router, prefix="/api")
 app.include_router(inventario_router, prefix="/api")

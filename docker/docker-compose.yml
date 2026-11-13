@@ -30,6 +30,7 @@ services:
       - "8000:8000"
     volumes:
       - ../apps/core-api:/app/apps/core-api
+      - ../modules/contacts/backend:/app/modules/contacts/backend
       - ../modules/inventario/backend:/app/modules/inventario/backend
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 

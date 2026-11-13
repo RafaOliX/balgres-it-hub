@@ -15,6 +15,7 @@ from sqlmodel import Session, SQLModel, select
 
 from .actas import DEFAULT_CONFIG, render_acta, seed_templates
 from .actas import router as actas_router
+from . import contacts_link  # noqa: F401
 from .catalogos import router as catalogos_router
 from .common import current_user, location_paths
 from .db import apply_migrations, engine, get_session
