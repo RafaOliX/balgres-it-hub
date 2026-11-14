@@ -1,135 +1,69 @@
 #!/usr/bin/env bash
+# Uso: ./scripts/restore.sh <stamp>
+# Para copiar datos de OTRA instancia: BACKUP_DIR=~/backups/balgres-it-hub ./scripts/restore.sh <stamp>
 set -euo pipefail
-cd "$(dirname "$0")/.."
+source "$(dirname "$0")/lib.sh"
+cd "$ROOT"
 
-DEST="${BACKUP_DIR:-$HOME/backups/balgres-it-hub}"
-COMPOSE=(docker compose -f docker/docker-compose.prod.yml --env-file .env.prod)
+REQUIRED=(acta_templates categories employees it_asset_assignments it_asset_history it_asset_images it_assets locations)
+OPTIONAL=(subnets ip_addresses roles users)   # si faltan (dump antiguo), el backend las crea al arrancar
 
-EXPECTED_TABLES=(
-  acta_templates categories employees it_asset_assignments
-  it_asset_history it_asset_images it_assets locations
-)
+fail() { echo ""; echo "❌ $*"; exit 1; }
 
 if [ $# -ne 1 ]; then
-  echo "Uso: $0 <stamp>"
-  echo "Ejemplo: $0 20261112-1550"
-  echo ""
-  echo "Backups disponibles:"
-  ls -1 "$DEST"/db-*.sql.gz 2>/dev/null \
-    | sed 's/.*db-//; s/\.sql\.gz//' || echo "  (ninguno)"
+  echo "Uso: $0 <stamp>   (backups en $DEST)"
+  ls -1 "$DEST"/db-*.sql.gz 2>/dev/null | sed 's/.*db-//; s/\.sql\.gz//' || echo "  (ninguno)"
   exit 1
 fi
-
 STAMP="$1"
-DB_FILE="$DEST/db-$STAMP.sql.gz"
-UP_FILE="$DEST/uploads-$STAMP.tar.gz"
-ENV_FILE="$DEST/env-$STAMP.prod"
+DB_FILE="$DEST/db-$STAMP.sql.gz"; UP_FILE="$DEST/uploads-$STAMP.tar.gz"; SUMS="$DEST/sums-$STAMP.txt"
+VOL="${PROJECT}_uploads"
 
-fail() {
-  echo ""
-  echo "❌ $*"
-  exit 1
-}
+echo "[0/5] Validando backup..."
+[ -s "$DB_FILE" ] || fail "falta o está vacío $DB_FILE"
+[ -s "$UP_FILE" ] || fail "falta o está vacío $UP_FILE"
+gunzip -t "$DB_FILE" 2>/dev/null || fail "dump no es gzip válido."
+gunzip -t "$UP_FILE" 2>/dev/null || fail "tar no es gzip válido."
+if [ -f "$SUMS" ]; then ( cd "$DEST" && sha256sum -c "sums-$STAMP.txt" --quiet ) || fail "checksum no coincide: backup alterado o corrupto."; else echo "   (sin sums, backup antiguo)"; fi
+TABLES=$(gunzip -c "$DB_FILE" | grep -oE "^COPY public\.[a-z_]+" | sed 's/^COPY public\.//' | sort -u)
+MISSING=""; for t in "${REQUIRED[@]}"; do echo "$TABLES" | grep -qx "$t" || MISSING="$MISSING $t"; done
+[ -z "$MISSING" ] || fail "el dump NO contiene tablas:$MISSING"
+for t in "${OPTIONAL[@]}"; do echo "$TABLES" | grep -qx "$t" || echo "   ⚠ el dump no trae '$t' (se creará vacía al arrancar)"; done
 
-# ── 0. Pre-flight: validar backups ANTES de tocar nada
-echo "[0/5] Validando archivos de backup..."
-[ -f "$DB_FILE" ]  || fail "falta $DB_FILE"
-[ -f "$UP_FILE" ]  || fail "falta $UP_FILE"
-[ -s "$DB_FILE" ]  || fail "dump DB vacío."
-[ -s "$UP_FILE" ]  || fail "tar uploads vacío."
-gunzip -t "$DB_FILE" 2>/dev/null || fail "dump DB no es gzip válido."
-gunzip -t "$UP_FILE" 2>/dev/null || fail "tar uploads no es gzip válido."
-
-DB_TABLES=$(gunzip -c "$DB_FILE" | grep -oE "^COPY public\.[a-z_]+" | sed 's/^COPY public\.//' | sort -u)
-MISSING=""
-for t in "${EXPECTED_TABLES[@]}"; do
-  echo "$DB_TABLES" | grep -qx "$t" || MISSING="$MISSING $t"
-done
-[ -z "$MISSING" ] || fail "el dump NO contiene tablas: $MISSING — backup corrupto o incompleto."
-
-IMG_COUNT=$(gunzip -c "$UP_FILE" | tar tf - 2>/dev/null | grep -cE '\.(png|jpg|jpeg|webp)$' || true)
-[ "$IMG_COUNT" -ge 1 ] || fail "el tar no contiene imágenes."
-
-echo "   ✓ DB: $(du -h "$DB_FILE" | cut -f1), $IMG_COUNT imágenes, ${#EXPECTED_TABLES[@]} tablas"
-
-echo ""
-echo "⚠️  Esto REEMPLAZA la DB y los uploads actuales."
-echo "   Backup: $STAMP"
-read -p "¿Continuar? [y/N] " ok
+echo ""; echo "⚠️  Esto REEMPLAZA la DB y las fotos de la instancia '$PROJECT' (puerto $HUB_PORT)."
+read -rp "¿Continuar? [y/N] " ok
 [ "$ok" = "y" ] || { echo "Cancelado"; exit 0; }
 
-# ── 1. Backup de seguridad
-echo ""
-echo "[1/5] Backup de seguridad de la DB actual..."
+mkdir -p "$DEST"
+echo "[1/5] Backup de seguridad..."
 SAFE="$DEST/db-pre-restore-$(date +%Y%m%d-%H%M).sql.gz"
-"${COMPOSE[@]}" exec -T db pg_dump -U inventario inventario_it | gzip > "$SAFE"
-gunzip -t "$SAFE" 2>/dev/null || fail "backup de seguridad falló (gzip inválido)."
+"${COMPOSE[@]}" exec -T db pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$SAFE" || fail "backup de seguridad falló."
+gunzip -t "$SAFE" 2>/dev/null || fail "backup de seguridad inválido."
 echo "   ✓ $SAFE"
 
-# ── 2. Parar backend
-echo "[2/5] Parar backend..."
+echo "[2/5] Parando backend..."
 "${COMPOSE[@]}" stop backend >/dev/null
-echo "   ✓ parado"
 
-# ── 3. Restaurar DB
-echo "[3/5] Restaurar DB..."
-"${COMPOSE[@]}" exec -T db psql -U inventario -d inventario_it \
-  -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO inventario;" \
-  >/dev/null
-
-RESTORE_LOG=$(gunzip -c "$DB_FILE" \
-  | "${COMPOSE[@]}" exec -T db psql -U inventario -d inventario_it 2>&1 || true)
-
-if echo "$RESTORE_LOG" | grep -qiE "^ERROR"; then
-  echo "$RESTORE_LOG" | grep -iE "^ERROR" | head -10
-  fail "el restore produjo errores. Backup de seguridad en: $SAFE"
+echo "[3/5] Restaurando DB..."
+"${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+  -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO \"$DB_USER\";" >/dev/null \
+  || fail "no se pudo limpiar el esquema. Seguridad en: $SAFE"
+if ! gunzip -c "$DB_FILE" | "${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -1 >/dev/null; then
+  fail "el restore falló (transacción revertida). Backup de seguridad: $SAFE"
 fi
+N=$("${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -At -c "SELECT COUNT(*) FROM it_assets;")
+echo "   ✓ restaurado ($N activos)"
 
-# validar tablas post-restore
-ACTUAL_TABLES=$("${COMPOSE[@]}" exec -T db psql -U inventario -d inventario_it -At \
-  -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;")
-MISSING=""
-for t in "${EXPECTED_TABLES[@]}"; do
-  echo "$ACTUAL_TABLES" | grep -qx "$t" || MISSING="$MISSING $t"
-done
-[ -z "$MISSING" ] || fail "post-restore faltan tablas: $MISSING. Restaurar backup de seguridad: ./scripts/restore.sh ${SAFE##*/db-pre-restore-}"
+echo "[4/5] Restaurando uploads..."
+docker volume create "$VOL" >/dev/null 2>&1 || true
+docker run --rm -v "$VOL":/data alpine sh -c 'find /data -mindepth 1 -delete'
+docker run --rm -v "$VOL":/data -v "$DEST":/backup:ro alpine \
+  sh -c "cd /data && tar xzf /backup/uploads-$STAMP.tar.gz --strip-components=1"
+echo "   ✓ $(docker run --rm -v "$VOL":/data alpine sh -c 'ls /data | wc -l' | tr -d ' \n') archivos"
 
-# validar que hay datos en it_assets (no solo schema)
-N_ASSETS=$("${COMPOSE[@]}" exec -T db psql -U inventario -d inventario_it -At \
-  -c "SELECT COUNT(*) FROM it_assets;")
-echo "   ✓ ${#EXPECTED_TABLES[@]} tablas, $N_ASSETS activos"
-
-# ── 4. Restaurar uploads
-echo "[4/5] Restaurar uploads..."
-docker volume rm -f balgres-it-hub_uploads >/dev/null 2>&1 || true
-docker volume create balgres-it-hub_uploads >/dev/null
-docker run --rm \
-  -v balgres-it-hub_uploads:/data \
-  -v "$DEST":/backup:ro \
-  alpine sh -c "cd /data && tar xzf /backup/uploads-$STAMP.tar.gz --strip-components=1"
-
-UP_RESTORED=$(docker run --rm -v balgres-it-hub_uploads:/data alpine \
-  sh -c "ls /data | wc -l" | tr -d ' \n')
-[ "$UP_RESTORED" -ge 1 ] || fail "el volumen uploads quedó vacío tras el restore."
-echo "   ✓ $UP_RESTORED archivos en /app/uploads"
-
-# ── 5. Levantar backend
-echo "[5/5] Levantar backend..."
+echo "[5/5] Levantando backend..."
 "${COMPOSE[@]}" start backend >/dev/null
-sleep 6
+wait_backend || fail "el backend no responde. Revisa: ./scripts/compose.sh logs backend"
 
-# health check
-
-HEALTH=$("${COMPOSE[@]}" exec -T backend python -c \
-  "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/docs', timeout=5).status)" 2>/dev/null || echo "fail")
-if [ "$HEALTH" != "200" ]; then
-  echo "   ⚠️  backend no responde /health todavía. Revisa: docker compose logs backend"
-else
-  echo "   ✓ backend /health = 200"
-fi
-
-echo ""
-echo "✅ Restore completo"
-echo ""
-echo "Verificar en navegador: http://localhost:8091/"
-echo "Si algo falla, backup de seguridad en: $SAFE"
+echo ""; echo "✅ Restore completo → http://localhost:$HUB_PORT"
+echo "Si algo se ve mal, vuelve atrás con: ./scripts/restore.sh ${SAFE##*/db-}  (en BACKUP_DIR=$DEST)"

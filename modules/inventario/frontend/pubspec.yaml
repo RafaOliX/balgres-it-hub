@@ -15,6 +15,10 @@ dependencies:
   go_router: ^14.3.0
   image_picker: ^1.1.2
   file_picker: ^8.1.2
+  balgres_it_ui:
+    path: ../../../packages/ui
+  balgres_it_contacts:
+    path: ../../contacts/frontend
 
 dev_dependencies:
   flutter_test:

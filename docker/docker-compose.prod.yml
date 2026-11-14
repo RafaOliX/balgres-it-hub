@@ -1,4 +1,4 @@
-name: balgres-it-hub
+name: ${COMPOSE_PROJECT_NAME:-balgres-it-hub}
 
 services:
   db:
@@ -22,8 +22,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ENVIRONMENT: production
       UPLOADS_DIR: /app/uploads
+      REDES_PING_MINUTES: ${REDES_PING_MINUTES:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -35,10 +37,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    environment:
-      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
     ports:
-      - "8091:80"
+      - "${HUB_PORT:-8091}:80"
     depends_on:
       - backend
     restart: unless-stopped

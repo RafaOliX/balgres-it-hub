@@ -8,7 +8,7 @@ export 'src/pages/categories_page.dart';
 export 'src/pages/inventario_dashboard_page.dart';
 export 'src/pages/catalogos_page.dart';
 export 'src/pages/papelera_page.dart';
-export 'src/pages/empleados_page.dart';
+export 'src/pages/empleado_custodia.dart';
 export 'src/pages/acta_templates_page.dart';
 export 'src/widgets/search_select.dart';
 export 'src/data/inventario_api.dart';

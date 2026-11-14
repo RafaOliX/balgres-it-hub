@@ -3,7 +3,7 @@ import io
 import pandas as pd
 import pytest
 
-from conftest import BASE, make_asset
+from conftest import BASE, CBASE, make_asset
 
 
 def _png() -> bytes:
@@ -115,8 +115,8 @@ def test_limpiar_borradores(client, cat):
 # ------------------------------------------------------------------ asignaciones
 def test_asignar_reasignar_y_devolver(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    ana = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
-    luis = client.post(f"{BASE}/employees", json={"name": "Luis"}).json()
+    ana = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
+    luis = client.post(f"{CBASE}/employees", json={"name": "Luis"}).json()
 
     r = client.post(f"{BASE}/MON-001/assign", json={"employee_id": ana["id"]})
     assert r.status_code == 200 and r.json()["assigned_to"] == "Ana"
@@ -133,16 +133,16 @@ def test_asignar_reasignar_y_devolver(client, cat):
 
 def test_no_asignar_a_empleado_inactivo(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
-    client.put(f"{BASE}/employees/{e['id']}", json={"name": "Ana", "active": False})
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
+    client.put(f"{CBASE}/employees/{e['id']}", json={"name": "Ana", "active": False})
     assert client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]}).status_code == 400
 
 
 def test_empleado_con_historial_no_se_borra(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
     client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
-    assert client.delete(f"{BASE}/employees/{e['id']}").status_code == 400
+    assert client.delete(f"{CBASE}/employees/{e['id']}").status_code == 400
 
 
 # ------------------------------------------------------------------ ubicaciones
@@ -215,9 +215,9 @@ def test_etiquetas_pdf(client, cat):
 
 def test_ficha_de_empleado(client, cat):
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
     client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
-    ov = client.get(f"{BASE}/employees/overview").json()
+    ov = client.get(f"{CBASE}/employees/overview").json()
     assert ov[0]["asset_count"] == 1
     assert [a["asset_tag"] for a in client.get(f"{BASE}/employees/{e['id']}/assets").json()] == ["MON-001"]
     assert len(client.get(f"{BASE}/employees/{e['id']}/history").json()) == 1
@@ -226,11 +226,11 @@ def test_ficha_de_empleado(client, cat):
 
 # ------------------------------------------------------------------ fase 3: empleados y actas
 def test_empleado_con_telefono_y_extension(client):
-    r = client.post(f"{BASE}/employees", json={"name": "Ana", "phone": "0991234567", "extension": "204", "position": "Analista"})
+    r = client.post(f"{CBASE}/employees", json={"name": "Ana", "phone": "0991234567", "extension": "204", "position": "Analista"})
     assert r.status_code == 201 and r.json()["extension"] == "204"
-    ov = client.get(f"{BASE}/employees/overview").json()
+    ov = client.get(f"{CBASE}/employees/overview").json()
     assert ov[0]["phone"] == "0991234567" and ov[0]["position"] == "Analista"
-    assert client.get(f"{BASE}/employees/export").status_code == 200
+    assert client.get(f"{CBASE}/employees/export").status_code == 200
 
 
 def test_plantillas_de_acta_y_hoja_en_blanco(client, cat):
@@ -244,7 +244,7 @@ def test_plantillas_de_acta_y_hoja_en_blanco(client, cat):
     assert blanco.status_code == 200 and blanco.content.startswith(b"%PDF")
 
     make_asset(client, "MON-001", cat, serial_number="S1")
-    e = client.post(f"{BASE}/employees", json={"name": "Ana", "extension": "204"}).json()
+    e = client.post(f"{CBASE}/employees", json={"name": "Ana", "extension": "204"}).json()
     client.post(f"{BASE}/MON-001/assign", json={"employee_id": e["id"]})
     for url in (f"{BASE}/employees/{e['id']}/pdf?template_id={t['id']}",
                 f"{BASE}/acta-templates/{t['id']}/pdf?employee_id={e['id']}&blank=true",
@@ -260,8 +260,8 @@ def test_plantillas_de_acta_y_hoja_en_blanco(client, cat):
 def test_baja_y_traspaso_de_empleado(client, cat):
     for i in (1, 2):
         make_asset(client, f"MON-00{i}", cat, serial_number=f"S{i}")
-    ana = client.post(f"{BASE}/employees", json={"name": "Ana"}).json()
-    luis = client.post(f"{BASE}/employees", json={"name": "Luis"}).json()
+    ana = client.post(f"{CBASE}/employees", json={"name": "Ana"}).json()
+    luis = client.post(f"{CBASE}/employees", json={"name": "Luis"}).json()
     for i in (1, 2):
         client.post(f"{BASE}/MON-00{i}/assign", json={"employee_id": ana["id"]})
 
@@ -273,4 +273,4 @@ def test_baja_y_traspaso_de_empleado(client, cat):
     r = client.post(f"{BASE}/employees/{luis['id']}/offboard", json={})
     assert r.json()["devueltos"] == 2
     assert client.get(f"{BASE}/MON-001").json()["assigned_to"] is None
-    assert [x for x in client.get(f"{BASE}/employees").json() if x["id"] == luis["id"]][0]["active"] is False
+    assert [x for x in client.get(f"{CBASE}/employees").json() if x["id"] == luis["id"]][0]["active"] is False

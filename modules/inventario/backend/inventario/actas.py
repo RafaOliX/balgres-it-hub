@@ -37,6 +37,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "blank_rows": 10,
     "signatures": ["Firma Responsable TI", "Firma de Recibido"],
     "footer": "",
+    "show_logo": True,
+    "header_text": "Departamento de TI",
+    "page_footer": "",
+    "show_page_numbers": True,
 }
 
 
@@ -50,9 +54,11 @@ def normalize_config(cfg: dict | None) -> dict:
     except (TypeError, ValueError):
         d["blank_rows"] = 10
     d["signatures"] = [str(x).strip()[:60] for x in (d.get("signatures") or []) if str(x).strip()][:4]
-    for k in ("title", "intro", "footer"):
+    for k in ("title", "intro", "footer", "header_text", "page_footer"):
         d[k] = str(d.get(k) or "")[:2000]
     d["show_date"] = bool(d.get("show_date"))
+    d["show_logo"] = bool(d.get("show_logo"))
+    d["show_page_numbers"] = bool(d.get("show_page_numbers"))
     return d
 
 
@@ -71,17 +77,61 @@ def seed_templates() -> None:
 
 # ------------------------------------------------------------------ render
 _FONT_DIR = os.getenv("PDF_FONT_DIR", "/usr/share/fonts/truetype/dejavu")
+_LOGO = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
 
 
 def _latin(s) -> str:
     return str(s).encode("latin-1", "replace").decode("latin-1")
 
 
+class _Pdf(FPDF):
+    """FPDF con encabezado (logo + texto) y pie (texto + numeración) según la config."""
+    doc = None
+
+    def header(self):
+        d = self.doc
+        c = d.cfg
+        logo = bool(c.get("show_logo")) and os.path.exists(_LOGO)
+        txt = (c.get("header_text") or "").strip()
+        if not (logo or txt):
+            return
+        w = self.w - self.l_margin - self.r_margin
+        if logo:
+            self.image(_LOGO, x=self.l_margin, y=8, h=12)
+        if txt:
+            d.font(9)
+            self.set_xy(self.l_margin, 10)
+            self.cell(w, 8, text=d.fit(txt, w * 0.6), align="R")
+        self.set_draw_color(200, 200, 200)
+        self.line(self.l_margin, 23, self.w - self.r_margin, 23)
+        self.set_draw_color(0)
+        self.set_y(27)
+
+    def footer(self):
+        d = self.doc
+        c = d.cfg
+        txt = (c.get("page_footer") or "").strip()
+        nums = bool(c.get("show_page_numbers"))
+        if not (txt or nums):
+            return
+        w = self.w - self.l_margin - self.r_margin
+        self.set_draw_color(200, 200, 200)
+        self.line(self.l_margin, self.h - 14, self.w - self.r_margin, self.h - 14)
+        self.set_draw_color(0)
+        d.font(8)
+        self.set_y(-12)
+        self.cell(w * 0.7, 6, text=d.fit(txt, w * 0.7) if txt else "")
+        if nums:
+            self.cell(0, 6, text=d.t(f"Página {self.page_no()}/{{nb}}"), align="R")
+
+
 class _Doc:
     """Envuelve FPDF: fuente Unicode si existe (DejaVu) y, si no, Helvetica con latin-1."""
 
-    def __init__(self, landscape: bool):
-        self.pdf = FPDF(orientation="L" if landscape else "P", unit="mm", format="A4")
+    def __init__(self, landscape: bool, cfg: dict):
+        self.cfg = cfg
+        self.pdf = _Pdf(orientation="L" if landscape else "P", unit="mm", format="A4")
+        self.pdf.doc = self
         reg, bold = os.path.join(_FONT_DIR, "DejaVuSans.ttf"), os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
         self.uni = os.path.exists(reg) and os.path.exists(bold)
         if self.uni:
@@ -89,6 +139,7 @@ class _Doc:
             self.pdf.add_font("DJ", "B", bold)
             self.pdf.add_font("DJ", "I", reg)
         self.pdf.set_auto_page_break(True, margin=15)
+        self.pdf.alias_nb_pages()
         self.pdf.add_page()
 
     def font(self, size: float, style: str = "") -> None:
@@ -130,7 +181,7 @@ def render_acta(session: Session, cfg: dict | None, emp: Employee | None, assets
     W = 277 if land else 190
     paths = location_paths(session)
     blank_doc = blank_table or (emp is None and not assets)
-    d = _Doc(land)
+    d = _Doc(land, cfg)
     pdf = d.pdf
 
     nombre = emp.name if emp else "____________________"

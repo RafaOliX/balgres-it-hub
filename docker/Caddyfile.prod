@@ -1,10 +1,6 @@
 :80 {
     encode zstd gzip
 
-    basic_auth /* {
-        admin {$BASIC_AUTH_HASH}
-    }
-
     header {
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"

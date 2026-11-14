@@ -347,6 +347,11 @@ class _Toolbar extends ConsumerWidget {
       for (final l in filter.locations) _chip('Ubic: $l', () => set(filter.copyWith(locations: {...filter.locations}..remove(l)))),
       if (filter.assign != AssignFilter.all) _chip(assignLabels[filter.assign]!, () => set(filter.copyWith(assign: AssignFilter.all))),
       if (filter.sort != 'recent') _chip('Orden: ${sortLabels[filter.sort]}', () => set(filter.copyWith(sort: 'recent'))),
+      if (filter.sortCol != null)
+        _chip(
+          'Orden: ${kBaseColumns.where((d) => d.id == filter.sortCol).firstOrNull?.label ?? filter.sortCol!.replaceFirst('spec:', '')} ${filter.sortAsc ? '↑' : '↓'}',
+          () => set(filter.copyWith(clearSortCol: true, sortAsc: true)),
+        ),
       if (filter.groupBy != null) _chip('Agrupado: ${groupLabels[filter.groupBy]}', () => set(filter.copyWith(clearGroupBy: true))),
     ];
 
@@ -501,6 +506,7 @@ class _DesktopTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.sw;
     final sel = ref.watch(selectionProvider);
+    final filter = ref.watch(inventoryFilterProvider);
     final totalW = 56 + cols.fold<double>(0, (s, e) => s + e.width) + 24;
     final allSelected = allTags.isNotEmpty && allTags.every(sel.contains);
     final some = sel.isNotEmpty && !allSelected;
@@ -534,7 +540,22 @@ class _DesktopTable extends ConsumerWidget {
                       onChanged: (_) => ref.read(selectionProvider.notifier).state = allSelected ? <String>{} : {...allTags},
                     ),
                   ),
-                  for (final col in cols) SizedBox(width: col.width, child: Padding(padding: const EdgeInsets.only(right: 12), child: SectionLabel(col.label))),
+                  for (final col in cols)
+                    InkWell(
+                      onTap: () => ref.read(inventoryFilterProvider.notifier).state = nextColumnSort(filter, col.id),
+                      child: SizedBox(
+                        width: col.width,
+                        height: 48,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: Row(children: [
+                            Flexible(child: SectionLabel(col.label)),
+                            if (filter.sortCol == col.id)
+                              Padding(padding: const EdgeInsets.only(left: 4), child: Icon(filter.sortAsc ? Icons.arrow_upward : Icons.arrow_downward, size: 14, color: c.accent)),
+                          ]),
+                        ),
+                      ),
+                    ),
                 ]),
               ),
               Divider(height: 1, color: c.line),

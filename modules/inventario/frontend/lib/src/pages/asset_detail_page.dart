@@ -9,6 +9,7 @@ import '../models/catalogs.dart';
 import '../models/category.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
+import 'package:balgres_it_ui/auth_session.dart';
 import '../ui/swiss.dart';
 import '../widgets/asset_card.dart';
 import '../widgets/search_select.dart';
@@ -290,7 +291,7 @@ class _AssetDetailPageState extends ConsumerState<AssetDetailPage> {
             IconButton(icon: const Icon(Icons.copy_all_outlined), tooltip: 'Duplicar equipo', onPressed: _asset == null ? null : () => openNewAsset(context, template: _asset)),
             IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Etiqueta QR', onPressed: _asset == null ? null : _etiqueta),
             IconButton(icon: const Icon(Icons.picture_as_pdf_outlined), tooltip: 'Acta PDF', onPressed: _asset == null ? null : _acta),
-            IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Enviar a papelera', onPressed: _asset == null ? null : _eliminar),
+            if (AuthSession.can('inventario.eliminar')) IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Enviar a papelera', onPressed: _asset == null ? null : _eliminar),
             const SizedBox(width: 8),
           ],
           bottom: const TabBar(

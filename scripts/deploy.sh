@@ -1,25 +1,20 @@
 #!/usr/bin/env bash
-# Backup -> build -> up -> espera salud -> verifica. Aborta si algo falla.
+# Backup -> build -> up -> espera salud. Aborta si algo falla (los datos quedan intactos).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT/docker"
-C=(docker compose -f docker-compose.prod.yml --env-file ../.env.prod)
+source "$(dirname "$0")/lib.sh"
+cd "$ROOT"
 
+echo "==> Desplegando instancia '$PROJECT' (puerto $HUB_PORT, rama $(git rev-parse --abbrev-ref HEAD))"
 "$ROOT/scripts/backup.sh"
-"${C[@]}" build backend
-"${C[@]}" build caddy
-"${C[@]}" up -d
+"${COMPOSE[@]}" build backend
+"${COMPOSE[@]}" build caddy
+"${COMPOSE[@]}" up -d
 
 echo "Esperando al backend..."
-ok=0
-for _ in $(seq 1 30); do
-  if "${C[@]}" exec -T backend curl -fsS http://localhost:8000/api/inventario/health >/dev/null 2>&1; then ok=1; break; fi
-  sleep 2
-done
-if [ "$ok" != 1 ]; then
-  "${C[@]}" logs --tail=80 backend
-  echo "FALLO: el backend no responde (los datos siguen intactos; el backup está en ~/backups)"; exit 1
+if ! wait_backend; then
+  "${COMPOSE[@]}" logs --tail=80 backend
+  echo "FALLO: el backend no responde (los datos siguen intactos; backup en $DEST)"; exit 1
 fi
 echo -n "Índices en it_assets: "
-"${C[@]}" exec -T db psql -U inventario -d inventario_it -tAc "select count(*) from pg_indexes where tablename='it_assets'"
-echo "OK: desplegado"
+"${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc "select count(*) from pg_indexes where tablename='it_assets'"
+echo "✅ Desplegado: http://localhost:$HUB_PORT"

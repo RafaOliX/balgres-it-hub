@@ -18,8 +18,14 @@ dependencies:
   file_saver: ^0.2.14
   shared_preferences: ^2.3.2
 
+  balgres_it_contacts:
+    path: ../../modules/contacts/frontend
   balgres_it_inventario:
     path: ../../modules/inventario/frontend
+  balgres_it_ui:
+    path: ../../packages/ui
+  balgres_it_redes:
+    path: ../../modules/redes/frontend
 
 dev_dependencies:
   flutter_test:

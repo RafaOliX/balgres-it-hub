@@ -6,19 +6,13 @@ from collections.abc import Iterator
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./inventario.db")
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+from contacts.db import DATABASE_URL, engine, get_session  # noqa: F401,E402  (engine compartido)
 
 DEFAULT_SPECS = {
     "Computadora": ["CPU", "RAM", "Disco", "SO", "Hostname", "IP", "MAC"],
     "Impresora": ["IP", "MAC", "Contador de páginas"],
     "Monitor": ["Pulgadas", "Resolución"],
 }
-
-
-def get_session() -> Iterator[Session]:
-    with Session(engine) as session:
-        yield session
 
 
 def apply_migrations() -> None:
@@ -74,13 +68,6 @@ def apply_migrations() -> None:
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS specs JSONB;"))
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_it_assets_deleted_at ON it_assets(deleted_at);"))
-        # empleados (fase 3)
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS employee_code VARCHAR(64);"))
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS position VARCHAR(128);"))
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(40);"))
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS extension VARCHAR(20);"))
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id);"))
-        conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS notes TEXT;"))
         # fase 4: rendimiento
         conn.execute(text("ALTER TABLE it_assets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();"))
         for col in ("category_id", "employee_id", "location_id", "is_draft", "status", "created_at", "updated_at"):

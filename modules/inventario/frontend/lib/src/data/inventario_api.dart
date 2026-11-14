@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:balgres_it_ui/auth_session.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import '../models/it_asset.dart';
 import '../models/it_asset_history.dart';
 import '../models/category.dart';
 import '../models/catalogs.dart';
+
+export 'package:balgres_it_contacts/balgres_it_contacts.dart' show apiError;
 
 class InventarioApi {
   // Se inyectan en build: --dart-define=API_USER=xxx --dart-define=API_PASS=yyy
@@ -26,7 +29,19 @@ class InventarioApi {
             if (_user.isNotEmpty)
               'Authorization': 'Basic ${base64Encode(utf8.encode('$_user:$_pass'))}',
           },
-        ));
+        )) {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (o, h) {
+        final t = AuthSession.token;
+        if (t != null) o.headers['Authorization'] = 'Bearer $t';
+        h.next(o);
+      },
+      onError: (e, h) {
+        if (e.response?.statusCode == 401 && AuthSession.token != null) AuthSession.onUnauthorized?.call();
+        h.next(e);
+      },
+    ));
+  }
 
   // ---- Categorías
   Future<List<Category>> getCategorias() async {
@@ -161,15 +176,6 @@ class InventarioApi {
   }
 
   // ---- Empleados
-  Future<List<Employee>> getEmpleados() async {
-    final r = await _dio.get<List<dynamic>>('/inventario/employees/overview');
-    return (r.data ?? []).map((e) => Employee.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<void> crearEmpleado(Map<String, dynamic> body) async => await _dio.post('/inventario/employees', data: body);
-  Future<void> actualizarEmpleado(int id, Map<String, dynamic> body) async => await _dio.put('/inventario/employees/$id', data: body);
-  Future<void> eliminarEmpleado(int id) async => await _dio.delete('/inventario/employees/$id');
-
   Future<Map<String, dynamic>> importarEmpleados() async {
     final r = await _dio.post<Map<String, dynamic>>('/inventario/employees/import-from-assets');
     return r.data ?? {};
@@ -186,6 +192,13 @@ class InventarioApi {
 
   Future<void> devolver(String tag, String notes) async =>
       await _dio.post('/inventario/$tag/return', data: {'notes': notes.isEmpty ? null : notes});
+
+  /// Validación en vivo de una IP contra el registro de Redes.
+  Future<Map<String, dynamic>> verificarIp(String ip, {String? assetTag}) async {
+    final r = await _dio.get<Map<String, dynamic>>('/redes/ips/check',
+        queryParameters: {'ip': ip, if (assetTag != null && assetTag.isNotEmpty) 'asset_tag': assetTag});
+    return r.data ?? {};
+  }
 
   // ---- Dashboard / papelera / etiquetas
   Future<Map<String, dynamic>> getDashboard() async {
@@ -204,11 +217,6 @@ class InventarioApi {
   Future<int> limpiarBorradores({int dias = 7}) async {
     final r = await _dio.delete<Map<String, dynamic>>('/inventario/borradores', queryParameters: {'dias': dias});
     return (r.data?['eliminados'] as num?)?.toInt() ?? 0;
-  }
-
-  Future<Employee> getEmpleado(int id) async {
-    final r = await _dio.get<Map<String, dynamic>>('/inventario/employees/$id');
-    return Employee.fromJson(r.data!);
   }
 
   Future<List<ItAsset>> getEmpleadoActivos(int id) async {
@@ -276,11 +284,6 @@ class InventarioApi {
     return (r.data?['traspasados'] as num?)?.toInt() ?? 0;
   }
 
-  Future<void> descargarEmpleadosExcel() async {
-    final r = await _dio.get<List<int>>('/inventario/employees/export', options: Options(responseType: ResponseType.bytes));
-    await FileSaver.instance.saveFile(name: 'empleados', bytes: Uint8List.fromList(r.data!), ext: 'xlsx', mimeType: MimeType.microsoftExcel);
-  }
-
   Future<void> descargarEtiquetas([List<String>? tags]) async {
     final r = await _dio.get<List<int>>(
       '/inventario/labels',
@@ -289,18 +292,4 @@ class InventarioApi {
     );
     await FileSaver.instance.saveFile(name: 'etiquetas', bytes: Uint8List.fromList(r.data!), ext: 'pdf', mimeType: MimeType.pdf);
   }
-}
-
-/// Extrae el mensaje 'detail' que devuelve FastAPI.
-String apiError(Object e) {
-  if (e is DioException) {
-    final d = e.response?.data;
-    if (d is Map && d['detail'] != null) {
-      final det = d['detail'];
-      if (det is List) return det.map((x) => x is Map ? (x['msg'] ?? x).toString() : x.toString()).join('; ');
-      return det.toString();
-    }
-    return e.message ?? 'Error de red';
-  }
-  return e.toString();
 }

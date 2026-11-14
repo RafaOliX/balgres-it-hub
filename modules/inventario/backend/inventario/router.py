@@ -15,6 +15,9 @@ from sqlmodel import Session, SQLModel, select
 
 from .actas import DEFAULT_CONFIG, render_acta, seed_templates
 from .actas import router as actas_router
+from . import contacts_link  # noqa: F401
+from . import redes_link  # noqa: F401
+from redes import service as redes
 from .catalogos import router as catalogos_router
 from .common import current_user, location_paths
 from .db import apply_migrations, engine, get_session
@@ -416,6 +419,28 @@ def etiquetas(tags: str | None = None, session: Session = Depends(get_session)):
     )
 
 
+# ---- IPs: registrar en Redes las que ya están en los datos técnicos
+@router.post("/ips/sync")
+def sincronizar_ips(session: Session = Depends(get_session)):
+    """Registra las IP de los activos finales y reporta duplicadas o inválidas."""
+    registradas, conflictos = 0, []
+    assets = session.exec(
+        select(ItAsset).where(ItAsset.deleted_at.is_(None), ItAsset.is_draft == False).order_by(ItAsset.asset_tag)  # noqa: E712
+    ).all()
+    for a in assets:
+        ip = redes.ip_from_specs(a.specs)
+        if not ip:
+            continue
+        try:
+            redes.assign(session, a)
+            session.flush()
+            registradas += 1
+        except HTTPException as e:
+            conflictos.append({"tag": a.asset_tag, "ip": ip, "detalle": str(e.detail)})
+    session.commit()
+    return {"registradas": registradas, "conflictos": conflictos}
+
+
 # ---- limpieza de borradores
 @router.delete("/borradores")
 def limpiar_borradores(dias: int = Query(7, ge=0, le=365), session: Session = Depends(get_session)):
@@ -425,6 +450,7 @@ def limpiar_borradores(dias: int = Query(7, ge=0, le=365), session: Session = De
         select(ItAsset).where(ItAsset.is_draft == True, ItAsset.created_at < limite)  # noqa: E712
     ).all()
     for a in borradores:
+        redes.release(session, a.id)
         for img in a.images:
             p = UPLOADS_DIR / img.filename
             if p.exists():
@@ -508,6 +534,7 @@ def _crear(payload: ItAssetCreate, session: Session, user: str):
                 setattr(existente, k, v)
             existente.is_draft = False
             _validate_sn(session, existente)
+            redes.assign(session, existente)
             session.add(existente)
             session.commit()
             session.refresh(existente)
@@ -515,6 +542,8 @@ def _crear(payload: ItAssetCreate, session: Session, user: str):
         else:
             raise HTTPException(409, detail=f"El Tag '{payload.asset_tag}' ya está asignado a un activo final.")
 
+    if not payload.is_draft:
+        redes.check_specs(session, payload.specs)
     asset = ItAsset(**payload.model_dump())
     if asset.serial_number is not None and asset.serial_number.strip() == "":
         asset.serial_number = None
@@ -541,6 +570,7 @@ def _crear(payload: ItAssetCreate, session: Session, user: str):
         else:
             raise HTTPException(409, detail=f"Error de integridad en la base de datos: {str(e.orig)}")
     session.refresh(asset)
+    redes.assign(session, asset)
     session.add(ItAssetHistory(
         asset_id=asset.id, field_name="registro", changed_by=user,
         new_value="Borrador creado" if asset.is_draft else "Activo creado",
@@ -585,6 +615,8 @@ def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depend
 
     with session.no_autoflush:
         _validate_sn(session, asset)
+        if "specs" in data or was_draft:
+            redes.assign(session, asset)
     session.add(asset)
     try:
         session.commit()
@@ -620,6 +652,7 @@ def eliminar(asset_tag: str, session: Session = Depends(get_session), user: str 
         _log_change(session, asset.id, "asignado_a", asset.assigned_to, None, user)
         asset.employee_id = None
         asset.assigned_to = None
+    redes.release(session, asset.id)
     session.add(ItAssetHistory(asset_id=asset.id, field_name="registro", new_value="Enviado a la papelera", changed_by=user))
     session.add(asset)
     session.commit()
@@ -631,6 +664,7 @@ def restaurar(asset_tag: str, session: Session = Depends(get_session), user: str
     if asset.deleted_at is None:
         raise HTTPException(400, detail="El activo no está en la papelera")
     asset.deleted_at = None
+    redes.assign(session, asset)
     session.add(ItAssetHistory(asset_id=asset.id, field_name="registro", new_value="Restaurado de la papelera", changed_by=user))
     session.add(asset)
     session.commit()

@@ -447,7 +447,7 @@ class _AssetFormPageState extends ConsumerState<AssetFormPage> {
                   ),
                 ),
               ]),
-              FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
+              FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs, assetTag: _tag.text)]),
               FormSection('Ubicación y estado', [
                 LocationDropdown(value: _locationId, onChanged: (v) => setState(() { _locationId = v; _hasChanges = true; })),
                 const SizedBox(height: 16),
