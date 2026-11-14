@@ -16,6 +16,7 @@ from sqlmodel import Session, SQLModel, select
 from .actas import DEFAULT_CONFIG, render_acta, seed_templates
 from .actas import router as actas_router
 from . import contacts_link  # noqa: F401
+from . import redes_link  # noqa: F401
 from redes import service as redes
 from .catalogos import router as catalogos_router
 from .common import current_user, location_paths
@@ -449,6 +450,7 @@ def limpiar_borradores(dias: int = Query(7, ge=0, le=365), session: Session = De
         select(ItAsset).where(ItAsset.is_draft == True, ItAsset.created_at < limite)  # noqa: E712
     ).all()
     for a in borradores:
+        redes.release(session, a.id)
         for img in a.images:
             p = UPLOADS_DIR / img.filename
             if p.exists():
@@ -568,8 +570,7 @@ def _crear(payload: ItAssetCreate, session: Session, user: str):
         else:
             raise HTTPException(409, detail=f"Error de integridad en la base de datos: {str(e.orig)}")
     session.refresh(asset)
-    if not asset.is_draft:
-        redes.assign(session, asset)
+    redes.assign(session, asset)
     session.add(ItAssetHistory(
         asset_id=asset.id, field_name="registro", changed_by=user,
         new_value="Borrador creado" if asset.is_draft else "Activo creado",
@@ -614,7 +615,7 @@ def actualizar(asset_tag: str, payload: ItAssetUpdate, session: Session = Depend
 
     with session.no_autoflush:
         _validate_sn(session, asset)
-        if not asset.is_draft and ("specs" in data or was_draft):
+        if "specs" in data or was_draft:
             redes.assign(session, asset)
     session.add(asset)
     try:
@@ -663,8 +664,7 @@ def restaurar(asset_tag: str, session: Session = Depends(get_session), user: str
     if asset.deleted_at is None:
         raise HTTPException(400, detail="El activo no está en la papelera")
     asset.deleted_at = None
-    if not asset.is_draft:
-        redes.assign(session, asset)
+    redes.assign(session, asset)
     session.add(ItAssetHistory(asset_id=asset.id, field_name="registro", new_value="Restaurado de la papelera", changed_by=user))
     session.add(asset)
     session.commit()

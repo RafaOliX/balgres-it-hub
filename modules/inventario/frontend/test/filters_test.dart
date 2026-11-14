@@ -108,6 +108,33 @@ void main() {
     });
   });
 
+  group('orden por columna', () {
+    test('las IPs técnicas se ordenan por octetos y los vacíos quedan al final', () {
+      final l = [
+        mk('A-1', specs: {'IP': '192.0.60.10'}),
+        mk('A-2', specs: {'IP': '192.0.60.9'}),
+        mk('A-3'),
+      ];
+      expect(tags(applyFilter(l, const InventoryFilter(sortCol: 'spec:IP'))), ['A-2', 'A-1', 'A-3']);
+      expect(tags(applyFilter(l, const InventoryFilter(sortCol: 'spec:IP', sortAsc: false))), ['A-1', 'A-2', 'A-3']);
+    });
+
+    test('nextColumnSort alterna asc, desc y sin orden', () {
+      var f = nextColumnSort(const InventoryFilter(), 'brand');
+      expect((f.sortCol, f.sortAsc), ('brand', true));
+      f = nextColumnSort(f, 'brand');
+      expect((f.sortCol, f.sortAsc), ('brand', false));
+      f = nextColumnSort(f, 'brand');
+      expect(f.sortCol, isNull);
+    });
+
+    test('toJson/fromJson conserva columna y dirección', () {
+      const f = InventoryFilter(sortCol: 'serial', sortAsc: false);
+      final r = InventoryFilter.fromJson(f.toJson());
+      expect((r.sortCol, r.sortAsc), ('serial', false));
+    });
+  });
+
   group('tema', () {
     test('el acento se aplica al esquema y a la extensión', () {
       const accent = Color(0xFF0F766E);

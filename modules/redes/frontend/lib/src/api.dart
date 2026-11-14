@@ -39,8 +39,27 @@ class RedesApi {
   Future<void> crearSubnet(String name, String cidr) async => await _dio.post('/redes/subnets', data: {'name': name, 'cidr': cidr});
   Future<void> eliminarSubnet(int id) async => await _dio.delete('/redes/subnets/$id');
 
-  Future<Map<String, dynamic>> escanear(String cidr) async {
-    final r = await _dio.post<Map<String, dynamic>>('/redes/scan', data: {'cidr': cidr});
+  Future<List<Segment>> getSegmentos() async {
+    final r = await _dio.get<List<dynamic>>('/redes/segments');
+    return (r.data ?? []).map((e) => Segment.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Nombre vacío = quitar el nombre del segmento.
+  Future<void> nombrarSegmento(String cidr, String name) async => await _dio.put('/redes/segments', data: {'cidr': cidr, 'name': name});
+
+  Future<List<DuplicateIp>> getDuplicadas() async {
+    final r = await _dio.get<List<dynamic>>('/redes/duplicates');
+    return (r.data ?? []).map((e) => DuplicateIp.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<Map<String, dynamic>> sincronizar() async {
+    final r = await _dio.post<Map<String, dynamic>>('/redes/sync');
+    return r.data ?? {};
+  }
+
+  /// [register] guarda como "escaneo" las IPs vivas que no estaban registradas.
+  Future<Map<String, dynamic>> escanear(String cidr, {bool register = false}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/redes/scan', data: {'cidr': cidr, 'register': register});
     return r.data ?? {};
   }
 

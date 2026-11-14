@@ -1,3 +1,7 @@
+import asyncio
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -8,9 +12,25 @@ from inventario import init_db as inventario_init_db
 from inventario import router as inventario_router
 from redes import init_db as redes_init_db
 from redes import router as redes_router
+from redes.router import periodic_ping
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = None
+    try:
+        minutes = int(os.getenv("REDES_PING_MINUTES", "5") or 0)
+    except ValueError:
+        minutes = 5
+    if minutes > 0:
+        task = asyncio.create_task(periodic_ping(minutes))
+    yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(
+    lifespan=lifespan,
     title="Balgres IT Hub API",
     version="0.2.0",
     description="API central del departamento de IT",

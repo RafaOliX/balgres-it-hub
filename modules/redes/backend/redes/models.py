@@ -29,7 +29,14 @@ class IpAddress(SQLModel, table=True):
     asset_id: Optional[int] = Field(default=None, index=True)
     asset_tag: Optional[str] = Field(default=None, max_length=64)
     mac: Optional[str] = Field(default=None, max_length=32)
+    hostname: Optional[str] = Field(default=None, max_length=128)
+    is_draft: bool = Field(default=False)  # reservada por un borrador
     origin: str = Field(default="manual", max_length=16)  # "manual" | "activo"
     is_up: Optional[bool] = Field(default=None)
     last_seen: Optional[datetime] = Field(default=None)
+    first_seen: Optional[datetime] = Field(default=None)
+    latency_ms: Optional[float] = Field(default=None)
+    ttl: Optional[int] = Field(default=None)
+    open_ports: Optional[str] = Field(default=None, max_length=128)  # "80,443,9100"
+    dns_name: Optional[str] = Field(default=None, max_length=255)
     created_at: datetime = Field(default_factory=_now)

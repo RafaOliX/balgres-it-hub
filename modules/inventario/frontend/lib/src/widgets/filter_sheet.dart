@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/filters.dart';
 import '../data/providers.dart';
+import '../data/table_prefs.dart';
 import '../models/category.dart';
 import '../models/it_asset.dart';
 
@@ -114,7 +115,18 @@ class _FiltersSheet extends ConsumerWidget {
                   'Ordenar por',
                   Wrap(spacing: 8, runSpacing: 4, children: [
                     for (final e in sortLabels.entries)
-                      ChoiceChip(label: Text(e.value), selected: f.sort == e.key, onSelected: (_) => set(f.copyWith(sort: e.key))),
+                      ChoiceChip(label: Text(e.value), selected: f.sortCol == null && f.sort == e.key, onSelected: (_) => set(f.copyWith(sort: e.key, clearSortCol: true))),
+                  ]),
+                ),
+                _section(
+                  'Ordenar por columna (toca otra vez para invertir)',
+                  Wrap(spacing: 8, runSpacing: 4, children: [
+                    for (final d in allColumns(items))
+                      ChoiceChip(
+                        label: Text('${d.label}${f.sortCol == d.id ? (f.sortAsc ? ' ↑' : ' ↓') : ''}'),
+                        selected: f.sortCol == d.id,
+                        onSelected: (_) => set(nextColumnSort(f, d.id)),
+                      ),
                   ]),
                 ),
                 _section(

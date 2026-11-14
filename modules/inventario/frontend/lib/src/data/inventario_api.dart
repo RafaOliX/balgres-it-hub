@@ -180,6 +180,13 @@ class InventarioApi {
   Future<void> devolver(String tag, String notes) async =>
       await _dio.post('/inventario/$tag/return', data: {'notes': notes.isEmpty ? null : notes});
 
+  /// Validación en vivo de una IP contra el registro de Redes.
+  Future<Map<String, dynamic>> verificarIp(String ip, {String? assetTag}) async {
+    final r = await _dio.get<Map<String, dynamic>>('/redes/ips/check',
+        queryParameters: {'ip': ip, if (assetTag != null && assetTag.isNotEmpty) 'asset_tag': assetTag});
+    return r.data ?? {};
+  }
+
   // ---- Dashboard / papelera / etiquetas
   Future<Map<String, dynamic>> getDashboard() async {
     final r = await _dio.get<Map<String, dynamic>>('/inventario/dashboard');

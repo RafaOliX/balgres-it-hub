@@ -10,3 +10,9 @@ final redesApiProvider = Provider<RedesApi>((ref) {
 final ipsProvider = FutureProvider.autoDispose<List<IpEntry>>((ref) => ref.watch(redesApiProvider).getIps());
 
 final subnetsProvider = FutureProvider.autoDispose<List<Subnet>>((ref) => ref.watch(redesApiProvider).getSubnets());
+
+/// Se recalcula solo cuando se invalida ipsProvider.
+final segmentsProvider = FutureProvider.autoDispose<List<Segment>>((ref) {
+  ref.watch(ipsProvider);
+  return ref.watch(redesApiProvider).getSegmentos();
+});

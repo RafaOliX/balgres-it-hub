@@ -48,6 +48,8 @@ class InventoryFilter {
   final bool showDrafts;
   final String sort;
   final String? groupBy;
+  final String? sortCol; // id de columna de la tabla (ver table_prefs.dart); manda sobre [sort]
+  final bool sortAsc;
 
   const InventoryFilter({
     this.query = '',
@@ -58,6 +60,8 @@ class InventoryFilter {
     this.showDrafts = false,
     this.sort = 'recent',
     this.groupBy,
+    this.sortCol,
+    this.sortAsc = true,
   });
 
   InventoryFilter copyWith({
@@ -70,6 +74,9 @@ class InventoryFilter {
     String? sort,
     String? groupBy,
     bool clearGroupBy = false,
+    String? sortCol,
+    bool? sortAsc,
+    bool clearSortCol = false,
   }) =>
       InventoryFilter(
         query: query ?? this.query,
@@ -80,6 +87,8 @@ class InventoryFilter {
         showDrafts: showDrafts ?? this.showDrafts,
         sort: sort ?? this.sort,
         groupBy: clearGroupBy ? null : (groupBy ?? this.groupBy),
+        sortCol: clearSortCol ? null : (sortCol ?? this.sortCol),
+        sortAsc: sortAsc ?? this.sortAsc,
       );
 
   /// Cantidad de dimensiones de filtro activas (sin contar búsqueda, orden ni agrupado).
@@ -90,7 +99,7 @@ class InventoryFilter {
       (locations.isNotEmpty ? 1 : 0) +
       (assign != AssignFilter.all ? 1 : 0);
 
-  bool get isDefault => query.trim().isEmpty && panelCount == 0 && sort == 'recent' && groupBy == null;
+  bool get isDefault => query.trim().isEmpty && panelCount == 0 && sort == 'recent' && groupBy == null && sortCol == null;
 
   String get summary {
     final p = <String>[
@@ -114,6 +123,8 @@ class InventoryFilter {
         'showDrafts': showDrafts,
         'sort': sort,
         'groupBy': groupBy,
+        'sortCol': sortCol,
+        'sortAsc': sortAsc,
       };
 
   factory InventoryFilter.fromJson(Map<String, dynamic> j) => InventoryFilter(
@@ -125,6 +136,8 @@ class InventoryFilter {
         showDrafts: (j['showDrafts'] as bool?) ?? false,
         sort: (j['sort'] as String?) ?? 'recent',
         groupBy: j['groupBy'] as String?,
+        sortCol: j['sortCol'] as String?,
+        sortAsc: (j['sortAsc'] as bool?) ?? true,
       );
 }
 
@@ -138,6 +151,60 @@ int naturalCompare(String a, String b) {
     return (int.tryParse(ma.group(2)!) ?? 0).compareTo(int.tryParse(mb.group(2)!) ?? 0);
   }
   return a.compareTo(b);
+}
+
+/// Texto de una columna de la tabla (mismos ids que table_prefs.dart); null si no aplica.
+String? sortValue(ItAsset a, String col) {
+  if (col.startsWith('spec:')) return a.specs[col.substring(5)];
+  return switch (col) {
+    'asset' => a.assetTag,
+    'equipo' => '${a.brand} ${a.model}',
+    'category' => a.category,
+    'brand' => a.brand,
+    'model' => a.model,
+    'serial' => a.serialNumber,
+    'location' => a.location,
+    'assigned' => a.assignedTo,
+    'status' => a.isDraft ? 'Borrador' : a.status,
+    'notes' => a.notes,
+    _ => null,
+  };
+}
+
+List<int>? _ipParts(String s) {
+  final p = s.trim().split('.');
+  if (p.length != 4) return null;
+  final n = [for (final x in p) int.tryParse(x)];
+  return n.contains(null) ? null : [for (final x in n) x!];
+}
+
+bool _blankCol(ItAsset a, String col) {
+  if (col == 'quantity' || col == 'created') return false;
+  return (sortValue(a, col) ?? '').trim().isEmpty;
+}
+
+/// Compara por columna: cantidad y fecha como número, IPs por octetos, tags en orden natural.
+int compareByColumn(ItAsset a, ItAsset b, String col) {
+  if (col == 'quantity') return a.quantity.compareTo(b.quantity);
+  if (col == 'created') return a.createdAt.compareTo(b.createdAt);
+  final x = (sortValue(a, col) ?? '').trim(), y = (sortValue(b, col) ?? '').trim();
+  final ia = _ipParts(x), ib = _ipParts(y);
+  if (ia != null && ib != null) {
+    for (var i = 0; i < 4; i++) {
+      final c = ia[i].compareTo(ib[i]);
+      if (c != 0) return c;
+    }
+    return 0;
+  }
+  if (col == 'asset') return naturalCompare(x, y);
+  return normalizeText(x).compareTo(normalizeText(y));
+}
+
+/// Ciclo del encabezado: ascendente → descendente → sin orden por columna.
+InventoryFilter nextColumnSort(InventoryFilter f, String id) {
+  if (f.sortCol != id) return f.copyWith(sortCol: id, sortAsc: true);
+  if (f.sortAsc) return f.copyWith(sortAsc: false);
+  return f.copyWith(clearSortCol: true, sortAsc: true);
 }
 
 /// Filtra y ordena. Con [ignoreStatus] omite estado/borradores (sirve para los contadores de los chips).
@@ -170,6 +237,16 @@ List<ItAsset> applyFilter(List<ItAsset> items, InventoryFilter f, {bool ignoreSt
     return true;
   }).toList();
 
+  final sc = f.sortCol;
+  if (sc != null) {
+    out.sort((a, b) {
+      final ea = _blankCol(a, sc), eb = _blankCol(b, sc);
+      if (ea != eb) return ea ? 1 : -1; // vacíos siempre al final
+      final c = compareByColumn(a, b, sc);
+      return f.sortAsc ? c : -c;
+    });
+    return out;
+  }
   switch (f.sort) {
     case 'tag':
       out.sort((a, b) => naturalCompare(a.assetTag, b.assetTag));

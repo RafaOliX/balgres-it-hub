@@ -24,6 +24,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ENVIRONMENT: production
       UPLOADS_DIR: /app/uploads
+      REDES_PING_MINUTES: ${REDES_PING_MINUTES:-5}
     depends_on:
       db:
         condition: service_healthy

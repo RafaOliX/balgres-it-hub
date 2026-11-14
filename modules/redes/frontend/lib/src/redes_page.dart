@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import 'models.dart';
 import 'providers.dart';
+import 'ip_table.dart';
+import 'segments_panel.dart';
 
 const _kKinds = ['Router', 'Access Point', 'DVR', 'Cámara IP', 'Marcaje', 'Servidor', 'Computadora', 'Impresora', 'Switch'];
 
@@ -76,7 +78,7 @@ Future<void> showIpDialog(BuildContext context, WidgetRef ref, {IpEntry? entry, 
   );
 }
 
-enum _Filter { all, up, down, unknown, manual }
+enum _Filter { all, up, down, unknown, manual, attention, drafts }
 
 class RedesPage extends ConsumerStatefulWidget {
   const RedesPage({super.key});
@@ -87,6 +89,9 @@ class RedesPage extends ConsumerStatefulWidget {
 class _RedesPageState extends ConsumerState<RedesPage> {
   String _q = '';
   _Filter _filter = _Filter.all;
+  String? _segment;
+  String? _sort;
+  bool _asc = true;
   bool _busy = false;
 
   Future<void> _verificar() async {
@@ -102,10 +107,10 @@ class _RedesPageState extends ConsumerState<RedesPage> {
     }
   }
 
-  Future<void> _scan() async {
+  Future<void> _scan([String? presetCidr]) async {
     final subs = ref.read(subnetsProvider).valueOrNull ?? const <Subnet>[];
     final ctrl = TextEditingController();
-    final cidr = await showDialog<String>(
+    final cidr = presetCidr ?? await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Escanear subred'),
@@ -150,9 +155,10 @@ class _RedesPageState extends ConsumerState<RedesPage> {
 
     final caidas = (r['registradas_caidas'] as List?) ?? const [];
     final nuevas = List<String>.from((r['vivas_sin_registrar'] as List?) ?? const []);
+    final hechas = <String>{};
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => AlertDialog(
         title: Text('Resultado · ${r['cidr']}'),
         content: SizedBox(
           width: 520,
@@ -170,14 +176,28 @@ class _RedesPageState extends ConsumerState<RedesPage> {
               if (nuevas.isEmpty) const Text('Ninguna.'),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final ip in nuevas.take(60))
-                  ActionChip(label: Text(ip), onPressed: () => showIpDialog(context, ref, ip: ip)),
+                  ActionChip(
+                    avatar: hechas.contains(ip) ? const Icon(Icons.check, size: 16) : null,
+                    label: Text(ip),
+                    onPressed: hechas.contains(ip)
+                        ? null
+                        : () async {
+                            try {
+                              await ref.read(redesApiProvider).crearIp({'ip': ip, 'label': 'Detectada por escaneo'});
+                              ref.invalidate(ipsProvider);
+                              setD(() => hechas.add(ip));
+                            } catch (e) {
+                              _snack(ctx, apiError(e));
+                            }
+                          },
+                  ),
               ]),
               if (nuevas.length > 60) Padding(padding: const EdgeInsets.only(top: 8), child: Text('… y ${nuevas.length - 60} más')),
             ]),
           ),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
-      ),
+      )),
     );
   }
 
@@ -245,6 +265,164 @@ class _RedesPageState extends ConsumerState<RedesPage> {
     );
   }
 
+  Future<void> _sync() async {
+    setState(() => _busy = true);
+    try {
+      final r = await ref.read(redesApiProvider).sincronizar();
+      ref.invalidate(ipsProvider);
+      final conf = (r['conflictos'] as List?) ?? const [];
+      _snack(context, '${r['registradas']} IPs sincronizadas${(r['no_validas'] ?? 0) > 0 ? ' · ${r['no_validas']} no válidas' : ''}${conf.isEmpty ? '' : ' · ${conf.length} en conflicto'}');
+      if (conf.isNotEmpty && mounted) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('IPs en conflicto'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final c in conf) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('${c['tag']} · ${c['ip']}\n${c['detalle']}')),
+                ]),
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+          ),
+        );
+      }
+    } catch (e) {
+      _snack(context, 'Error: ${apiError(e)}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _dups() async {
+    try {
+      final list = await ref.read(redesApiProvider).getDuplicadas();
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(list.isEmpty ? 'Sin IPs duplicadas' : '${list.length} IP(s) duplicadas'),
+          content: SizedBox(
+            width: 520,
+            child: list.isEmpty
+                ? const Text('Ningún activo comparte IP con otro.')
+                : SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final d in list) ...[
+                        Text(d.ip, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Wrap(spacing: 8, runSpacing: 4, children: [
+                          for (final a in d.activos)
+                            ActionChip(
+                              label: Text('${a['tag']}${a['borrador'] == true ? ' (borrador)' : ''}'),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                context.push('/inventario/detalle/${a['tag']}');
+                              },
+                            ),
+                        ]),
+                        const SizedBox(height: 14),
+                      ],
+                    ]),
+                  ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+        ),
+      );
+    } catch (e) {
+      _snack(context, 'Error: ${apiError(e)}');
+    }
+  }
+
+  void _toggleSort(String id) => setState(() {
+        if (_sort != id) {
+          _sort = id;
+          _asc = true;
+        } else if (_asc) {
+          _asc = false;
+        } else {
+          _sort = null;
+          _asc = true;
+        }
+      });
+
+  /// En móvil no hay encabezado: el orden se elige aquí.
+  Widget _sortMenu() => PopupMenuButton<String>(
+        tooltip: 'Ordenar',
+        icon: Icon(_sort == null ? Icons.sort : (_asc ? Icons.arrow_upward : Icons.arrow_downward)),
+        onSelected: (id) {
+          if (id.isEmpty) {
+            setState(() {
+              _sort = null;
+              _asc = true;
+            });
+          } else {
+            _toggleSort(id);
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: '', child: Text('Sin orden')),
+          for (final col in kIpColumns) PopupMenuItem(value: col.id, child: Text('${col.label}${_sort == col.id ? (_asc ? ' ↑' : ' ↓') : ''}')),
+        ],
+      );
+
+  /// Escanea uno a uno los segmentos conocidos y guarda las vivas sin registrar como "escaneo".
+  Future<void> _scanAll() async {
+    final segs = ref.read(segmentsProvider).valueOrNull ?? const <Segment>[];
+    if (segs.isEmpty) {
+      _snack(context, 'Aún no hay segmentos. Sincroniza o registra IPs primero.');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Escanear ${segs.length} segmento(s)'),
+        content: const Text('Cada segmento tarda unos 15-30 s. Las IPs que respondan y no estén registradas se guardarán como "detectadas". Puedes detenerlo en cualquier momento.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Escanear')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final progress = ValueNotifier<String>('Preparando…');
+    var stop = false;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: ValueListenableBuilder<String>(
+          valueListenable: progress,
+          builder: (_, v, __) => Row(children: [const CircularProgressIndicator(), const SizedBox(width: 20), Expanded(child: Text(v))]),
+        ),
+        actions: [TextButton(onPressed: () => stop = true, child: const Text('Detener'))],
+      ),
+    );
+
+    var vivas = 0, nuevas = 0, hechos = 0;
+    String? err;
+    for (final s in segs) {
+      if (stop) break;
+      progress.value = 'Escaneando ${s.name ?? s.cidr} (${hechos + 1}/${segs.length})…';
+      try {
+        final r = await ref.read(redesApiProvider).escanear(s.cidr, register: true);
+        vivas += (r['vivas'] as num?)?.toInt() ?? 0;
+        nuevas += (r['nuevas_registradas'] as num?)?.toInt() ?? 0;
+      } catch (e) {
+        err = apiError(e);
+        break;
+      }
+      hechos++;
+    }
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    ref.invalidate(ipsProvider);
+    _snack(context, '$hechos de ${segs.length} segmentos · $vivas responden · $nuevas nuevas guardadas${err == null ? '' : ' · Error: $err'}');
+  }
+
   Future<void> _delete(IpEntry e) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -275,6 +453,7 @@ class _RedesPageState extends ConsumerState<RedesPage> {
 
     final terms = normalizeText(_q.trim()).split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
     final list = all.where((e) {
+      if (_segment != null && e.segment != _segment) return false;
       switch (_filter) {
         case _Filter.up:
           if (e.isUp != true) return false;
@@ -284,6 +463,10 @@ class _RedesPageState extends ConsumerState<RedesPage> {
           if (e.isUp != null) return false;
         case _Filter.manual:
           if (e.assetTag != null) return false;
+        case _Filter.attention:
+          if (e.state == 'registrada') return false;
+        case _Filter.drafts:
+          if (!e.isDraft) return false;
         case _Filter.all:
           break;
       }
@@ -292,11 +475,13 @@ class _RedesPageState extends ConsumerState<RedesPage> {
       return terms.every(hay.contains);
     }).toList();
 
+    final sorted = sortIps(list, _sort, _asc);
     final up = all.where((e) => e.isUp == true).length;
     final down = all.where((e) => e.isUp == false).length;
     const labels = {
       _Filter.all: 'Todas', _Filter.up: 'En línea', _Filter.down: 'Sin respuesta',
       _Filter.unknown: 'Sin verificar', _Filter.manual: 'Sin activo',
+      _Filter.attention: 'Sin IP / no válida / conflicto', _Filter.drafts: 'Reservadas (borrador)',
     };
 
     return Padding(
@@ -311,6 +496,9 @@ class _RedesPageState extends ConsumerState<RedesPage> {
             ]),
           ),
           IconButton(icon: const Icon(Icons.refresh), tooltip: 'Recargar', onPressed: () => ref.invalidate(ipsProvider)),
+          IconButton(icon: const Icon(Icons.sync), tooltip: 'Sincronizar con inventario', onPressed: _busy ? null : _sync),
+          IconButton(icon: const Icon(Icons.travel_explore), tooltip: 'Escanear todos los segmentos', onPressed: _busy ? null : _scanAll),
+          IconButton(icon: const Icon(Icons.content_copy_outlined), tooltip: 'IPs duplicadas', onPressed: _dups),
           IconButton(icon: const Icon(Icons.hub_outlined), tooltip: 'Subredes', onPressed: _subnets),
           const SizedBox(width: 4),
           FilledButton.icon(onPressed: () => showIpDialog(context, ref), icon: const Icon(Icons.add, size: 18), label: Text(mobile ? 'IP' : 'Registrar IP')),
@@ -321,6 +509,8 @@ class _RedesPageState extends ConsumerState<RedesPage> {
           SizedBox(width: 190, child: KpiTile('En línea', '$up', icon: Icons.check_circle_outline, color: c.ok)),
           SizedBox(width: 190, child: KpiTile('Sin respuesta', '$down', icon: Icons.error_outline, color: down > 0 ? c.bad : c.muted)),
         ]),
+        const SizedBox(height: 18),
+        SegmentsPanel(selected: _segment, onSelect: (s) => setState(() => _segment = s), onScan: _scan),
         const SizedBox(height: 18),
         Row(children: [
           Expanded(
@@ -347,6 +537,7 @@ class _RedesPageState extends ConsumerState<RedesPage> {
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(label: Text(labels[f]!), selected: _filter == f, onSelected: (_) => setState(() => _filter = f)),
               ),
+            if (mobile) _sortMenu(),
           ]),
         ),
         const SizedBox(height: 12),
@@ -363,11 +554,20 @@ class _RedesPageState extends ConsumerState<RedesPage> {
                           action: 'Registrar IP',
                           onAction: () => showIpDialog(context, ref),
                         )
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(bottom: 24),
-                          itemCount: list.length,
-                          itemBuilder: (_, i) => _IpCard(entry: list[i], onEdit: (e) => showIpDialog(context, ref, entry: e), onDelete: _delete),
-                        ),
+                      : (mobile
+                          ? ListView.builder(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              itemCount: sorted.length,
+                              itemBuilder: (_, i) => _IpCard(entry: sorted[i], onEdit: (e) => showIpDialog(context, ref, entry: e), onDelete: _delete),
+                            )
+                          : IpTable(
+                              rows: sorted,
+                              sort: _sort,
+                              asc: _asc,
+                              onSort: _toggleSort,
+                              onEdit: (e) => showIpDialog(context, ref, entry: e),
+                              onDelete: _delete,
+                            )),
         ),
       ]),
     );
@@ -383,9 +583,16 @@ class _IpCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sw;
     final e = entry;
-    final col = e.isUp == null ? c.muted : (e.isUp! ? c.ok : c.bad);
-    final status = e.isUp == null ? 'Sin verificar' : (e.isUp! ? 'En línea' : 'Sin respuesta');
-    final sub = [e.label, e.kind, e.department].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
+    final virtual = e.state != 'registrada';
+    final col = virtual ? c.warn : (e.isUp == null ? c.muted : (e.isUp! ? c.ok : c.bad));
+    final status = switch (e.state) {
+      'sin_ip' => 'Sin IP',
+      'invalida' => 'IP no válida',
+      'conflicto' => 'IP en conflicto',
+      'pendiente' => 'Pendiente de sincronizar',
+      _ => e.isUp == null ? 'Sin verificar' : (e.isUp! ? 'En línea' : 'Sin respuesta'),
+    };
+    final sub = [e.label, e.kind ?? e.kindHint, e.department].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
     final fromAsset = e.assetTag != null;
 
     return Container(
@@ -404,7 +611,19 @@ class _IpCard extends StatelessWidget {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Wrap(spacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                    Text(e.ip, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text(e.ip.isEmpty ? 'Sin IP' : e.ip, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    if (e.origin == 'escaneo')
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: c.accent2.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+                        child: Text('Detectada', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.accent2)),
+                      ),
+                    if (e.isDraft)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: c.warn.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+                        child: Text(e.state == 'registrada' ? 'Reservada (borrador)' : 'Borrador', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.warn)),
+                      ),
                     if (fromAsset)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -417,9 +636,13 @@ class _IpCard extends StatelessWidget {
                   Text(
                     [
                       status,
+                      if (e.latencyMs != null) '${e.latencyMs!.toStringAsFixed(0)} ms',
+                      if (e.osHint != null) e.osHint!,
+                      if (e.openPorts.isNotEmpty) 'puertos ${e.openPorts.join(',')}',
+                      if ((e.hostname ?? e.dnsName) != null) (e.hostname ?? e.dnsName)!,
                       if (e.mac != null) 'MAC ${e.mac}',
                       if (e.subnet != null) e.subnet!,
-                      'visto: ${_when(e.lastSeen)}',
+                      if (!virtual) 'visto: ${_when(e.lastSeen)}',
                     ].join(' · '),
                     style: TextStyle(fontSize: 12, color: c.muted),
                   ),

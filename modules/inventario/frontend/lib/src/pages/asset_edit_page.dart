@@ -210,7 +210,7 @@ class _AssetEditPageState extends ConsumerState<AssetEditPage> {
                     Expanded(child: InputDecorator(decoration: const InputDecoration(labelText: 'Unidad'), child: Text(a.unit))),
                   ]),
                 ]),
-                FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs)]),
+                FormSection('Datos técnicos', [SpecsFields(ctrls: _specCtrls, hints: hints.specs, assetTag: a.assetTag)]),
                 FormSection('Ubicación y estado', [
                   if (a.locationId == null && a.location != null)
                     Padding(
