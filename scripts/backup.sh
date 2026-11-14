@@ -74,8 +74,7 @@ echo "[3/4] .env.prod..."
 cp .env.prod "$DEST/env-$STAMP.prod"
 chmod 600 "$DEST/env-$STAMP.prod"
 grep -q '^DB_PASSWORD=' "$DEST/env-$STAMP.prod" || fail "env-$STAMP.prod no tiene DB_PASSWORD."
-grep -q '^BASIC_AUTH_HASH=' "$DEST/env-$STAMP.prod" || fail "env-$STAMP.prod no tiene BASIC_AUTH_HASH."
-echo "   ✓ claves DB_PASSWORD y BASIC_AUTH_HASH presentes"
+echo "   ✓ claves DB_PASSWORD presentes"
 
 # ── 4. Resumen
 echo ""

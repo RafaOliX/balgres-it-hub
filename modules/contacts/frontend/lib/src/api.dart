@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:balgres_it_ui/auth_session.dart';
 import 'package:file_saver/file_saver.dart';
 
 import 'models.dart';
@@ -23,7 +24,19 @@ class ContactsApi {
             if (_user.isNotEmpty)
               'Authorization': 'Basic ${base64Encode(utf8.encode('$_user:$_pass'))}',
           },
-        ));
+        )) {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (o, h) {
+        final t = AuthSession.token;
+        if (t != null) o.headers['Authorization'] = 'Bearer $t';
+        h.next(o);
+      },
+      onError: (e, h) {
+        if (e.response?.statusCode == 401 && AuthSession.token != null) AuthSession.onUnauthorized?.call();
+        h.next(e);
+      },
+    ));
+  }
 
   Future<List<Employee>> getEmpleados() async {
     final r = await _dio.get<List<dynamic>>('/contacts/employees/overview');

@@ -20,6 +20,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.backend
     environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       DATABASE_URL: postgresql+psycopg://${DB_USER:-inventario}:${DB_PASSWORD:-cambiame}@db:5432/${DB_NAME:-inventario_it}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       ENVIRONMENT: development

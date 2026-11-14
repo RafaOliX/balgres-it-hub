@@ -5,7 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi import Depends, FastAPI
+from contacts.common import current_user
 
+from .auth import admin_router, auth_router, auth_username, guard, init_auth
 from contacts import init_db as contacts_init_db
 from contacts import router as contacts_router
 from inventario import init_db as inventario_init_db
@@ -63,6 +66,13 @@ async def app_version():
 contacts_init_db()
 inventario_init_db()
 redes_init_db()
-app.include_router(contacts_router, prefix="/api")
-app.include_router(inventario_router, prefix="/api")
-app.include_router(redes_router, prefix="/api")
+init_auth()
+
+# El historial y la custodia registran al usuario autenticado, no "admin".
+app.dependency_overrides[current_user] = auth_username
+
+app.include_router(auth_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
+app.include_router(contacts_router, prefix="/api", dependencies=[Depends(guard("contactos"))])
+app.include_router(inventario_router, prefix="/api", dependencies=[Depends(guard("inventario"))])
+app.include_router(redes_router, prefix="/api", dependencies=[Depends(guard("redes"))])

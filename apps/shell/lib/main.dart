@@ -9,7 +9,9 @@ import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'core/auth.dart';
 import 'core/layout.dart';
+import 'core/router.dart';
 import 'core/theme.dart';
 import 'pages/dashboard_page.dart';
 
@@ -27,40 +29,40 @@ const _hostBase = String.fromEnvironment(
 
 void main() => runApp(const BalgresItApp());
 
-final _router = GoRouter(
-  initialLocation: '/',
-  routes: [
-    ShellRoute(
-      builder: (_, __, child) => AppLayout(child: child),
-      routes: [
-        GoRoute(path: '/', builder: (_, __) => const DashboardPage()),
-        GoRoute(
-          path: '/inventario',
-          builder: (_, __) => const InventarioPage(),
-          routes: [
-            GoRoute(path: 'nuevo', builder: (_, state) => AssetFormPage(template: state.extra is ItAsset ? state.extra as ItAsset : null)),
-            GoRoute(
-              path: 'detalle/:tag',
-              builder: (_, state) => AssetDetailPage(assetTag: state.pathParameters['tag']!),
-            ),
-          ],
-        ),
-        GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
-        GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
-        GoRoute(
-          path: '/empleados',
-          builder: (_, __) => const EmpleadosPage(),
-          routes: [
-            GoRoute(
-              path: ':id',
-              builder: (_, state) => EmpleadoDetailPage(employeeId: int.parse(state.pathParameters['id']!)),
-            ),
-          ],
-        ),
-      ],
-    ),
-  ],
-);
+// final _router = GoRouter(
+//   initialLocation: '/',
+//   routes: [
+//     ShellRoute(
+//       builder: (_, __, child) => AppLayout(child: child),
+//       routes: [
+//         GoRoute(path: '/', builder: (_, __) => const DashboardPage()),
+//         GoRoute(
+//           path: '/inventario',
+//           builder: (_, __) => const InventarioPage(),
+//           routes: [
+//             GoRoute(path: 'nuevo', builder: (_, state) => AssetFormPage(template: state.extra is ItAsset ? state.extra as ItAsset : null)),
+//             GoRoute(
+//               path: 'detalle/:tag',
+//               builder: (_, state) => AssetDetailPage(assetTag: state.pathParameters['tag']!),
+//             ),
+//           ],
+//         ),
+//         GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
+//         GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
+//         GoRoute(
+//           path: '/empleados',
+//           builder: (_, __) => const EmpleadosPage(),
+//           routes: [
+//             GoRoute(
+//               path: ':id',
+//               builder: (_, state) => EmpleadoDetailPage(employeeId: int.parse(state.pathParameters['id']!)),
+//             ),
+//           ],
+//         ),
+//       ],
+//     ),
+//   ],
+// );
 
 class BalgresItApp extends StatefulWidget {
   const BalgresItApp({super.key});
@@ -107,6 +109,7 @@ class _BalgresItAppState extends State<BalgresItApp> {
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
         redesApiProvider.overrideWithValue(RedesApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
+        authApiProvider.overrideWithValue(AuthApi(baseUrl: _apiBase)),
       ],
       child: const _ThemedApp(),
     );
@@ -126,7 +129,7 @@ class _ThemedApp extends ConsumerWidget {
       theme: AppTheme.light(accent),
       darkTheme: AppTheme.dark(accent),
       themeMode: mode,
-      routerConfig: _router,
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }
