@@ -8,8 +8,10 @@ mkdir -p "$DEST"
 
 EXPECTED_TABLES=(
   acta_templates categories employees it_asset_assignments it_asset_history
-  it_asset_images it_assets locations subnets ip_addresses roles users notas
+  it_asset_images it_assets locations subnets ip_addresses roles users
 )
+# Módulos recién añadidos: si la instancia aún no los desplegó, solo avisa (no aborta)
+OPTIONAL_TABLES=(notas)
 
 fail() {
   echo ""; echo "❌ $*"; echo "   Backup abortado. Archivos parciales borrados."
@@ -34,6 +36,7 @@ FOUND=$(gunzip -c "$DEST/db-$STAMP.sql.gz" | grep -oE "^COPY public\.[a-z_]+" | 
 MISSING=""
 for t in "${EXPECTED_TABLES[@]}"; do echo "$FOUND" | grep -qx "$t" || MISSING="$MISSING $t"; done
 [ -z "$MISSING" ] || fail "el dump no contiene tablas:$MISSING"
+for t in "${OPTIONAL_TABLES[@]}"; do echo "$FOUND" | grep -qx "$t" || echo "   ⚠ el dump no trae '$t' (módulo aún no desplegado)"; done
 echo "   ✓ $LINES líneas, ${#EXPECTED_TABLES[@]} tablas"
 
 echo "[2/4] Uploads..."
