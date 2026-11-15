@@ -55,4 +55,18 @@ class PlanosApi {
   Future<void> crearPin(int planoId, Map<String, dynamic> body) async => await _dio.post('/planos/$planoId/pins', data: body);
   Future<void> actualizarPin(int planoId, int pinId, Map<String, dynamic> body) async => await _dio.put('/planos/$planoId/pins/$pinId', data: body);
   Future<void> eliminarPin(int planoId, int pinId) async => await _dio.delete('/planos/$planoId/pins/$pinId');
+
+  Future<void> crearTrazo(int planoId, Map<String, dynamic> body) async => await _dio.post('/planos/$planoId/trazos', data: body);
+  Future<void> eliminarTrazo(int planoId, int trazoId) async => await _dio.delete('/planos/$planoId/trazos/$trazoId');
+  Future<void> limpiarTrazos(int planoId) async => await _dio.delete('/planos/$planoId/trazos');
+
+  /// Notas disponibles para vincular (las sirve el módulo notas). Sin permiso o sin módulo: lista vacía.
+  Future<List<NotaRef>> getNotas() async {
+    try {
+      final r = await _dio.get<List<dynamic>>('/notas/');
+      return (r.data ?? []).map((e) => NotaRef.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
 }

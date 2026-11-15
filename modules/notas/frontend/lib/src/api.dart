@@ -47,4 +47,14 @@ class NotasApi {
   Future<void> crear(Map<String, dynamic> body) async => await _dio.post('/notas/', data: body);
   Future<void> actualizar(int id, Map<String, dynamic> body) async => await _dio.put('/notas/$id', data: body);
   Future<void> eliminar(int id) async => await _dio.delete('/notas/$id');
+
+  /// Planos que enlazan a esta nota (los sirve el módulo planos). Sin permiso o sin módulo: lista vacía.
+  Future<List<Map<String, dynamic>>> planosVinculados(int id) async {
+    try {
+      final r = await _dio.get<List<dynamic>>('/planos/by-nota/$id');
+      return (r.data ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
 }

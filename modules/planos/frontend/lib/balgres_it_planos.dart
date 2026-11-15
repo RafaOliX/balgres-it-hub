@@ -4,3 +4,4 @@ export 'src/api.dart';
 export 'src/models.dart';
 export 'src/providers.dart';
 export 'src/planos_page.dart';
+export 'src/plano_viewer_page.dart';

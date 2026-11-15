@@ -66,8 +66,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
           GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
-          GoRoute(path: '/notas', builder: (_, __) => const NotasPage()),
-          GoRoute(path: '/planos', builder: (_, __) => const PlanosPage()),
+          GoRoute(
+            path: '/notas',
+            builder: (_, __) => const NotasPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => NotaEditorPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
+          GoRoute(
+            path: '/planos',
+            builder: (_, __) => const PlanosPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => PlanoViewerPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
           GoRoute(
             path: '/empleados',
             builder: (_, __) => const EmpleadosPage(),

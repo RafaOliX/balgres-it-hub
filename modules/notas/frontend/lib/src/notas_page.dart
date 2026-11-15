@@ -195,6 +195,7 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
   final _body = TextEditingController();
   bool _loading = false, _saving = false;
   String? _error;
+  List<Map<String, dynamic>> _planos = const [];
 
   bool get _canEdit => AuthSession.can('notas.editar');
 
@@ -225,6 +226,8 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
         _asset.text = n.assetTag ?? '';
         _body.text = n.body;
       });
+      final pl = await ref.read(notasApiProvider).planosVinculados(widget.id!);
+      if (mounted) setState(() => _planos = pl);
     } catch (e) {
       if (mounted) setState(() => _error = apiError(e));
     } finally {
@@ -251,6 +254,8 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
       } else {
         await api.actualizar(widget.id!, body);
       }
+      ref.invalidate(notasProvider);
+      ref.invalidate(notasTagsProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       _snack(context, 'Error: ${apiError(e)}');
@@ -273,6 +278,8 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
     if (ok != true) return;
     try {
       await ref.read(notasApiProvider).eliminar(widget.id!);
+      ref.invalidate(notasProvider);
+      ref.invalidate(notasTagsProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       _snack(context, 'Error: ${apiError(e)}');
@@ -339,6 +346,19 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
                     keyboardType: TextInputType.multiline,
                     decoration: const InputDecoration(labelText: 'Contenido', alignLabelWithHint: true),
                   ),
+                  if (_planos.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    const SectionLabel('Planos vinculados'),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final p in _planos)
+                        ActionChip(
+                          avatar: const Icon(Icons.map_outlined, size: 16),
+                          label: Text(((p['pins'] as List?) ?? const []).isEmpty ? '${p['name']}' : '${p['name']} · ${(p['pins'] as List).join(', ')}'),
+                          onPressed: () => context.push('/planos/${p['id']}'),
+                        ),
+                    ]),
+                  ],
                   const SizedBox(height: 8),
                   Text('No guardes contraseñas aquí: cualquiera con permiso notas.ver puede leerlas.', style: TextStyle(fontSize: 12, color: c.muted)),
                 ]),

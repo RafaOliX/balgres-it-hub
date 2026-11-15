@@ -20,6 +20,11 @@ try:  # para probar el estado en línea (la tabla ip_addresses la crea redes)
 except ImportError:
     pass
 
+try:  # para probar el vínculo con notas
+    import notas.models  # noqa: F401
+except ImportError:
+    pass
+
 assert engine.dialect.name == "sqlite", "los tests deben correr contra SQLite"
 
 BASE = "/api/planos"
