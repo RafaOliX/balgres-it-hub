@@ -1,6 +1,7 @@
 import 'package:balgres_it_contacts/balgres_it_contacts.dart';
 import 'package:balgres_it_inventario/balgres_it_inventario.dart';
 import 'package:balgres_it_notas/balgres_it_notas.dart';
+import 'package:balgres_it_planos/balgres_it_planos.dart';
 import 'package:balgres_it_redes/balgres_it_redes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ const _guards = {
   '/empleados': 'contactos.ver',
   '/redes': 'redes.ver',
   '/notas': 'notas.ver',
+  '/planos': 'planos.ver',
   '/usuarios': 'usuarios.ver',
 };
 
@@ -65,6 +67,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
           GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
           GoRoute(path: '/notas', builder: (_, __) => const NotasPage()),
+          GoRoute(path: '/planos', builder: (_, __) => const PlanosPage()),
           GoRoute(
             path: '/empleados',
             builder: (_, __) => const EmpleadosPage(),

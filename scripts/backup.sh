@@ -11,7 +11,7 @@ EXPECTED_TABLES=(
   it_asset_images it_assets locations subnets ip_addresses roles users
 )
 # Módulos recién añadidos: si la instancia aún no los desplegó, solo avisa (no aborta)
-OPTIONAL_TABLES=(notas)
+OPTIONAL_TABLES=(notas planos plano_pins)
 
 fail() {
   echo ""; echo "❌ $*"; echo "   Backup abortado. Archivos parciales borrados."

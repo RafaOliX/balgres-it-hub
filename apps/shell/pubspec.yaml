@@ -28,6 +28,8 @@ dependencies:
     path: ../../modules/redes/frontend
   balgres_it_notas:
     path: ../../modules/notas/frontend
+  balgres_it_planos:
+    path: ../../modules/planos/frontend
 
 dev_dependencies:
   flutter_test:

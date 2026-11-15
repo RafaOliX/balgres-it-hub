@@ -9,6 +9,7 @@ COPY packages/ui /src/packages/ui
 COPY modules/contacts/frontend /src/modules/contacts/frontend
 COPY modules/redes/frontend /src/modules/redes/frontend
 COPY modules/notas/frontend /src/modules/notas/frontend
+COPY modules/planos/frontend /src/modules/planos/frontend
 COPY modules/inventario/frontend /src/modules/inventario/frontend
 COPY apps/shell /src/apps/shell
 

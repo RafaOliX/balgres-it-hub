@@ -6,7 +6,7 @@ source "$(dirname "$0")/lib.sh"
 cd "$ROOT"
 
 REQUIRED=(acta_templates categories employees it_asset_assignments it_asset_history it_asset_images it_assets locations)
-OPTIONAL=(subnets ip_addresses roles users notas)   # si faltan (dump antiguo), el backend las crea al arrancar
+OPTIONAL=(subnets ip_addresses roles users notas planos plano_pins)   # si faltan (dump antiguo), el backend las crea al arrancar
 
 fail() { echo ""; echo "❌ $*"; exit 1; }
 
