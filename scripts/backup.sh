@@ -8,7 +8,7 @@ mkdir -p "$DEST"
 
 EXPECTED_TABLES=(
   acta_templates categories employees it_asset_assignments it_asset_history
-  it_asset_images it_assets locations subnets ip_addresses roles users
+  it_asset_images it_assets locations subnets ip_addresses roles users notas
 )
 
 fail() {

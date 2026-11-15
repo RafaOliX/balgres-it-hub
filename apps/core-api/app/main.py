@@ -16,6 +16,8 @@ from inventario import router as inventario_router
 from redes import init_db as redes_init_db
 from redes import router as redes_router
 from redes.router import periodic_ping
+from notas import init_db as notas_init_db
+from notas import router as notas_router
 
 
 @asynccontextmanager
@@ -66,6 +68,7 @@ async def app_version():
 contacts_init_db()
 inventario_init_db()
 redes_init_db()
+notas_init_db()
 init_auth()
 
 # El historial y la custodia registran al usuario autenticado, no "admin".
@@ -76,3 +79,4 @@ app.include_router(admin_router, prefix="/api")
 app.include_router(contacts_router, prefix="/api", dependencies=[Depends(guard("contactos"))])
 app.include_router(inventario_router, prefix="/api", dependencies=[Depends(guard("inventario"))])
 app.include_router(redes_router, prefix="/api", dependencies=[Depends(guard("redes"))])
+app.include_router(notas_router, prefix="/api", dependencies=[Depends(guard("notas"))])

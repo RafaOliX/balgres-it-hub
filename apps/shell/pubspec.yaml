@@ -26,6 +26,8 @@ dependencies:
     path: ../../packages/ui
   balgres_it_redes:
     path: ../../modules/redes/frontend
+  balgres_it_notas:
+    path: ../../modules/notas/frontend
 
 dev_dependencies:
   flutter_test:

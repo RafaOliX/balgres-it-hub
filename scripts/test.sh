@@ -11,7 +11,8 @@ if [[ "$WHAT" == "backend" || "$WHAT" == "all" ]]; then
     -v "$ROOT/modules/inventario/backend:/app/modules/inventario/backend" \
     -v "$ROOT/modules/contacts/backend:/app/modules/contacts/backend" \
     -v "$ROOT/modules/redes/backend:/app/modules/redes/backend" \
-    backend sh -c "pip install -q pytest httpx && cd /app/modules/inventario/backend && python -m pytest -q tests"
+    -v "$ROOT/modules/notas/backend:/app/modules/notas/backend" \
+    backend sh -c "pip install -q pytest httpx && cd /app/modules/inventario/backend && python -m pytest -q tests && cd /app/modules/notas/backend && python -m pytest -q tests"
 fi
 
 if [[ "$WHAT" == "frontend" || "$WHAT" == "all" ]]; then
