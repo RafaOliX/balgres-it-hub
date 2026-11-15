@@ -33,6 +33,10 @@ services:
       - uploads:/app/uploads
     restart: unless-stopped
 
+  drawio:
+    image: jgraph/drawio:latest   
+    restart: unless-stopped
+
   caddy:
     build:
       context: ..
@@ -45,6 +49,8 @@ services:
     volumes:
       - uploads:/srv/uploads:ro
       - ../apps/shell/build/app/outputs/flutter-apk:/srv/apk:ro
+
+    
 
 volumes:
   pgdata:

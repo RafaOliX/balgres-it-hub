@@ -7,6 +7,12 @@ const kPinKinds = <(String, String, IconData)>[
   ('ap', 'Access Point', Icons.wifi),
   ('rack', 'Rack', Icons.dns),
   ('router', 'Router', Icons.router),
+  ('computadora', 'Computadora', Icons.computer),
+  ('impresora', 'Impresora', Icons.print),
+  ('monitor', 'Monitor', Icons.monitor),
+  ('telefono', 'Teléfono IP', Icons.phone_in_talk),
+  ('servidor', 'Servidor', Icons.memory),
+  ('ups', 'UPS', Icons.battery_charging_full),
   ('otro', 'Otro', Icons.place),
 ];
 

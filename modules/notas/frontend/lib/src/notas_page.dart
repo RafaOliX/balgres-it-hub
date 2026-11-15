@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'diagram_editor_page.dart';
 import 'models.dart';
 import 'providers.dart';
 
@@ -63,7 +64,7 @@ class _NotasPageState extends ConsumerState<NotasPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Notas', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -1.2, height: 1.0)),
               const SizedBox(height: 6),
-              Text('Documentación y apuntes del equipo de TI', style: TextStyle(fontSize: 13, color: c.muted)),
+              Text('Documentación, activos involucrados y diagramas del equipo de TI', style: TextStyle(fontSize: 13, color: c.muted)),
             ]),
           ),
           IconButton(
@@ -138,6 +139,7 @@ class _NotaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sw;
+    final extra = nota.assetTags.length - 3;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: cardDeco(context, radius: 14),
@@ -151,12 +153,11 @@ class _NotaCard extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(nota.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
-                if (nota.assetTag != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-                    child: Text(nota.assetTag!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.accent)),
-                  ),
+                if (nota.diagramCount > 0) ...[
+                  Icon(Icons.account_tree_outlined, size: 16, color: c.muted),
+                  const SizedBox(width: 4),
+                  Text('${nota.diagramCount}', style: TextStyle(fontSize: 12, color: c.muted, fontWeight: FontWeight.w700)),
+                ],
               ]),
               if (nota.snippet.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -164,6 +165,13 @@ class _NotaCard extends StatelessWidget {
               ],
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                for (final t in nota.assetTags.take(3))
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: c.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+                    child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.accent)),
+                  ),
+                if (extra > 0) Text('+$extra', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c.accent)),
                 for (final t in nota.tags)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -191,18 +199,22 @@ class NotaEditorPage extends ConsumerStatefulWidget {
 class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
   final _title = TextEditingController();
   final _tags = TextEditingController();
-  final _asset = TextEditingController();
   final _body = TextEditingController();
+  int? _id;
+  List<String> _assets = [];
   bool _loading = false, _saving = false;
   String? _error;
   List<Map<String, dynamic>> _planos = const [];
+  List<NotaDiagrama> _diagramas = const [];
 
   bool get _canEdit => AuthSession.can('notas.editar');
+  bool get _canDelete => AuthSession.can('notas.eliminar');
 
   @override
   void initState() {
     super.initState();
-    if (widget.id != null) {
+    _id = widget.id;
+    if (_id != null) {
       _loading = true;
       _load();
     }
@@ -210,7 +222,7 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
 
   @override
   void dispose() {
-    for (final c in [_title, _tags, _asset, _body]) {
+    for (final c in [_title, _tags, _body]) {
       c.dispose();
     }
     super.dispose();
@@ -218,21 +230,35 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
 
   Future<void> _load() async {
     try {
-      final n = await ref.read(notasApiProvider).obtener(widget.id!);
+      final n = await ref.read(notasApiProvider).obtener(_id!);
       if (!mounted) return;
       setState(() {
         _title.text = n.title;
         _tags.text = n.tags.join(', ');
-        _asset.text = n.assetTag ?? '';
+        _assets = [...n.assetTags];
         _body.text = n.body;
       });
-      final pl = await ref.read(notasApiProvider).planosVinculados(widget.id!);
-      if (mounted) setState(() => _planos = pl);
+      await _loadExtras();
     } catch (e) {
       if (mounted) setState(() => _error = apiError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadExtras() async {
+    final id = _id;
+    if (id == null) return;
+    final api = ref.read(notasApiProvider);
+    final pl = await api.planosVinculados(id);
+    var dg = const <NotaDiagrama>[];
+    try {
+      dg = await api.listarDiagramas(id);
+    } catch (_) {}
+    if (mounted) setState(() {
+      _planos = pl;
+      _diagramas = dg;
+    });
   }
 
   Future<void> _save() async {
@@ -245,18 +271,26 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
       'title': _title.text.trim(),
       'body': _body.text,
       'tags': _tags.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
-      'asset_tag': _asset.text.trim(),
+      'asset_tags': _assets,
     };
     try {
       final api = ref.read(notasApiProvider);
-      if (widget.id == null) {
-        await api.crear(body);
+      if (_id == null) {
+        final n = await api.crear(body);
+        ref.invalidate(notasProvider);
+        ref.invalidate(notasTagsProvider);
+        if (mounted) setState(() {
+          _id = n.id;
+          _saving = false;
+        });
+        _snack(context, 'Nota guardada. Ya puedes agregar diagramas.');
+        await _loadExtras();
       } else {
-        await api.actualizar(widget.id!, body);
+        await api.actualizar(_id!, body);
+        ref.invalidate(notasProvider);
+        ref.invalidate(notasTagsProvider);
+        if (mounted) Navigator.of(context).pop();
       }
-      ref.invalidate(notasProvider);
-      ref.invalidate(notasTagsProvider);
-      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       _snack(context, 'Error: ${apiError(e)}');
       if (mounted) setState(() => _saving = false);
@@ -268,7 +302,7 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar nota'),
-        content: Text('¿Eliminar "${_title.text}"? No se puede deshacer.'),
+        content: Text('¿Eliminar "${_title.text}" con sus diagramas? No se puede deshacer.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           FilledButton(style: FilledButton.styleFrom(backgroundColor: context.sw.bad, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
@@ -277,7 +311,7 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
     );
     if (ok != true) return;
     try {
-      await ref.read(notasApiProvider).eliminar(widget.id!);
+      await ref.read(notasApiProvider).eliminar(_id!);
       ref.invalidate(notasProvider);
       ref.invalidate(notasTagsProvider);
       if (mounted) Navigator.of(context).pop();
@@ -286,16 +320,43 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
     }
   }
 
+  Future<void> _openDiagram([NotaDiagrama? d]) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => DiagramEditorPage(notaId: _id!, diagramId: d?.id)));
+    if (!mounted) return;
+    ref.invalidate(notasProvider);
+    await _loadExtras();
+  }
+
+  Future<void> _deleteDiagram(NotaDiagrama d) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar diagrama'),
+        content: Text('¿Eliminar "${d.title}"? No se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: context.sw.bad, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(notasApiProvider).eliminarDiagrama(_id!, d.id);
+      ref.invalidate(notasProvider);
+      await _loadExtras();
+    } catch (e) {
+      _snack(context, 'Error: ${apiError(e)}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.sw;
-    final tag = _asset.text.trim();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.id == null ? 'Nueva nota' : (_canEdit ? 'Editar nota' : 'Nota')),
+        title: Text(_id == null ? 'Nueva nota' : (_canEdit ? 'Editar nota' : 'Nota')),
         actions: [
-          if (widget.id != null && AuthSession.can('notas.eliminar'))
-            IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Eliminar', onPressed: _delete),
+          if (_id != null && _canDelete) IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Eliminar', onPressed: _delete),
           if (_canEdit)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -312,42 +373,47 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
                   if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 16), child: Text(_error!, style: TextStyle(color: c.bad, fontWeight: FontWeight.w600))),
                   TextField(controller: _title, readOnly: !_canEdit, decoration: const InputDecoration(labelText: 'Título *')),
                   const SizedBox(height: 16),
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(
-                      flex: 3,
-                      child: TextField(controller: _tags, readOnly: !_canEdit, decoration: const InputDecoration(labelText: 'Etiquetas', helperText: 'Separadas por coma: cctv, redes, rack')),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: _asset,
-                        readOnly: !_canEdit,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(labelText: 'Tag de activo (opcional)', helperText: 'Ej: NVR-001'),
-                      ),
+                  TextField(controller: _tags, readOnly: !_canEdit, decoration: const InputDecoration(labelText: 'Etiquetas', helperText: 'Separadas por coma: cctv, redes, rack')),
+                  const SizedBox(height: 24),
+                  SwissSection('Activos involucrados', [
+                    AssetLinksField(
+                      label: 'Equipos y dispositivos de esta nota',
+                      tags: _assets,
+                      enabled: _canEdit,
+                      onChanged: (l) => setState(() => _assets = l),
+                      onOpen: (t) => context.push('/inventario/detalle/$t'),
                     ),
                   ]),
-                  if (tag.isNotEmpty)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => context.push('/inventario/detalle/$tag'),
-                        icon: const Icon(Icons.open_in_new, size: 16),
-                        label: Text('Ver activo $tag'),
-                      ),
-                    ),
-                  const SizedBox(height: 16),
                   TextField(
                     controller: _body,
                     readOnly: !_canEdit,
-                    minLines: 18,
+                    minLines: 14,
                     maxLines: null,
                     keyboardType: TextInputType.multiline,
                     decoration: const InputDecoration(labelText: 'Contenido', alignLabelWithHint: true),
                   ),
+                  const SizedBox(height: 24),
+                  SwissSection(
+                    'Diagramas',
+                    [
+                      if (_id == null) Text('Guarda la nota para poder agregar diagramas.', style: TextStyle(color: c.muted, fontSize: 13)),
+                      if (_id != null && _diagramas.isEmpty) Text('Aún no hay diagramas.', style: TextStyle(color: c.muted, fontSize: 13)),
+                      if (_diagramas.isNotEmpty)
+                        Wrap(spacing: 8, runSpacing: 8, children: [
+                          for (final d in _diagramas)
+                            InputChip(
+                              avatar: const Icon(Icons.account_tree_outlined, size: 16),
+                              label: Text(d.title),
+                              onPressed: () => _openDiagram(d),
+                              onDeleted: _canDelete ? () => _deleteDiagram(d) : null,
+                            ),
+                        ]),
+                    ],
+                    trailing: (_id != null && _canEdit)
+                        ? TextButton.icon(onPressed: () => _openDiagram(), icon: const Icon(Icons.add, size: 18), label: const Text('Nuevo diagrama'))
+                        : null,
+                  ),
                   if (_planos.isNotEmpty) ...[
-                    const SizedBox(height: 20),
                     const SectionLabel('Planos vinculados'),
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, runSpacing: 8, children: [
@@ -359,8 +425,8 @@ class _NotaEditorPageState extends ConsumerState<NotaEditorPage> {
                         ),
                     ]),
                   ],
-                  const SizedBox(height: 8),
-                  Text('No guardes contraseñas aquí: cualquiera con permiso notas.ver puede leerlas.', style: TextStyle(fontSize: 12, color: c.muted)),
+                  const SizedBox(height: 16),
+                  Text('No guardes contraseñas aquí ni en los diagramas: cualquiera con permiso notas.ver puede leerlas.', style: TextStyle(fontSize: 12, color: c.muted)),
                 ]),
               ),
             ),

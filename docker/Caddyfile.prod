@@ -3,13 +3,19 @@
 
     header {
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
+        # SAMEORIGIN (antes DENY): la app incrusta /drawio/ en un iframe del mismo sitio
+        X-Frame-Options "SAMEORIGIN"
         Referrer-Policy "strict-origin-when-cross-origin"
     }
 
     # API
     handle /api/* {
         reverse_proxy backend:8000
+    }
+
+    # draw.io autoalojado (editor de diagramas de Notas)
+    handle_path /drawio/* {
+        reverse_proxy drawio:8080
     }
 
     # APK de Android (para descargas)

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:balgres_it_ui/balgres_it_ui.dart' show AssetRef, assetPickerProvider, assetRefsProvider;
 
 import 'core/auth.dart';
 import 'core/layout.dart';
@@ -114,6 +115,17 @@ class _BalgresItAppState extends State<BalgresItApp> {
         planosApiProvider.overrideWithValue(PlanosApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
         authApiProvider.overrideWithValue(AuthApi(baseUrl: _apiBase)),
+                assetPickerProvider.overrideWithValue(showAssetPicker),
+        assetRefsProvider.overrideWith((ref) {
+          final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+          return {
+            for (final a in items)
+              a.assetTag: AssetRef(
+                tag: a.assetTag, title: '${a.brand} ${a.model}'.trim(), category: a.category,
+                imageUrl: a.imageUrl, status: a.status, location: a.location,
+              ),
+          };
+        }),
       ],
       child: const _ThemedApp(),
     );

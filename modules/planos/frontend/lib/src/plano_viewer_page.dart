@@ -146,9 +146,9 @@ class _PlanoViewerPageState extends ConsumerState<PlanoViewerPage> {
 
   Future<void> _pinDialog({Pin? pin, double? x, double? y}) async {
     final label = TextEditingController(text: pin?.label ?? '');
-    final asset = TextEditingController(text: pin?.assetTag ?? '');
     final notes = TextEditingController(text: pin?.notes ?? '');
     var kind = pin?.kind ?? 'camara';
+    var assets = <String>[if (pin?.assetTag != null) pin!.assetTag!];
     int? notaId = pin?.notaId;
     final canEdit = _canEdit;
     final notas = canEdit ? await ref.read(planosApiProvider).getNotas() : const <NotaRef>[];
@@ -160,7 +160,7 @@ class _PlanoViewerPageState extends ConsumerState<PlanoViewerPage> {
         builder: (ctx, setM) => AlertDialog(
           title: Text(pin == null ? 'Nuevo pin' : (canEdit ? 'Editar pin' : pinLabel(pin.kind))),
           content: SizedBox(
-            width: 420,
+            width: 460,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (pin?.ip != null)
@@ -170,14 +170,30 @@ class _PlanoViewerPageState extends ConsumerState<PlanoViewerPage> {
                   ),
                 DropdownButtonFormField<String>(
                   value: kind,
-                  decoration: const InputDecoration(labelText: 'Tipo'),
+                  decoration: const InputDecoration(labelText: 'Tipo de dispositivo', helperText: 'Define qué categoría de inventario se sugiere al elegir el activo'),
                   items: [for (final k in kPinKinds) DropdownMenuItem(value: k.$1, child: Text(k.$2))],
                   onChanged: canEdit ? (v) => setM(() => kind = v!) : null,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+                AssetLinksField(
+                  label: 'Activo vinculado',
+                  tags: assets,
+                  multi: false,
+                  enabled: canEdit,
+                  kindHint: kind,
+                  onChanged: (l) => setM(() {
+                    assets = l;
+                    if (l.isNotEmpty) {
+                      final r = ref.read(assetRefsProvider)[l.first];
+                      if (r != null) {
+                        kind = kindForCategory(r.category) ?? kind; // el tipo sale de la categoría del activo
+                        if (label.text.trim().isEmpty) label.text = r.title;
+                      }
+                    }
+                  }),
+                ),
+                const SizedBox(height: 16),
                 TextField(controller: label, readOnly: !canEdit, decoration: const InputDecoration(labelText: 'Nombre', hintText: 'Cámara entrada principal')),
-                const SizedBox(height: 12),
-                TextField(controller: asset, readOnly: !canEdit, decoration: const InputDecoration(labelText: 'Tag de activo (opcional)', helperText: 'Ej: CAM-001. Muestra su estado en línea desde Redes')),
                 const SizedBox(height: 12),
                 TextField(controller: notes, readOnly: !canEdit, maxLines: 2, decoration: const InputDecoration(labelText: 'Notas')),
                 if (canEdit) ...[
@@ -222,7 +238,7 @@ class _PlanoViewerPageState extends ConsumerState<PlanoViewerPage> {
         case 'save':
           final body = {
             'x': pin?.x ?? x, 'y': pin?.y ?? y, 'kind': kind, 'label': label.text.trim(),
-            'asset_tag': asset.text.trim(), 'notes': notes.text.trim(), 'nota_id': notaId,
+            'asset_tag': assets.isEmpty ? '' : assets.first, 'notes': notes.text.trim(), 'nota_id': notaId,
           };
           if (pin == null) {
             await api.crearPin(widget.id, body);

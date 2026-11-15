@@ -44,7 +44,11 @@ class NotasApi {
     return Nota.fromJson(r.data!);
   }
 
-  Future<void> crear(Map<String, dynamic> body) async => await _dio.post('/notas/', data: body);
+  Future<Nota> crear(Map<String, dynamic> body) async {
+    final r = await _dio.post<Map<String, dynamic>>('/notas/', data: body);
+    return Nota.fromJson(r.data!);
+  }
+
   Future<void> actualizar(int id, Map<String, dynamic> body) async => await _dio.put('/notas/$id', data: body);
   Future<void> eliminar(int id) async => await _dio.delete('/notas/$id');
 
@@ -57,4 +61,25 @@ class NotasApi {
       return const [];
     }
   }
+
+  // ---- diagramas (draw.io)
+  Future<List<NotaDiagrama>> listarDiagramas(int notaId) async {
+    final r = await _dio.get<List<dynamic>>('/notas/$notaId/diagramas');
+    return (r.data ?? []).map((e) => NotaDiagrama.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<NotaDiagrama> obtenerDiagrama(int notaId, int id) async {
+    final r = await _dio.get<Map<String, dynamic>>('/notas/$notaId/diagramas/$id');
+    return NotaDiagrama.fromJson(r.data!);
+  }
+
+  Future<NotaDiagrama> crearDiagrama(int notaId, String title, String xml) async {
+    final r = await _dio.post<Map<String, dynamic>>('/notas/$notaId/diagramas', data: {'title': title, 'xml': xml});
+    return NotaDiagrama.fromJson(r.data!);
+  }
+
+  Future<void> actualizarDiagrama(int notaId, int id, String title, String xml) async =>
+      await _dio.put('/notas/$notaId/diagramas/$id', data: {'title': title, 'xml': xml});
+
+  Future<void> eliminarDiagrama(int notaId, int id) async => await _dio.delete('/notas/$notaId/diagramas/$id');
 }

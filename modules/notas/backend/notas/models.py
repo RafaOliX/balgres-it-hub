@@ -1,8 +1,8 @@
-"""Modelos de notas. Tabla nueva: notas (sin FKs a otros módulos)."""
+"""Modelos de notas. Tablas: notas, nota_activos y nota_diagramas (sin FKs a otros módulos)."""
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Text
 from sqlmodel import Field, SQLModel
 
 
@@ -16,9 +16,29 @@ class Nota(SQLModel, table=True):
     title: str = Field(max_length=200, index=True)
     body: str = Field(default="")
     tags: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
-    # vínculo opcional con inventario (solo el texto del tag, sin FK)
+    # Legado: primer activo vinculado. Los vínculos reales viven en nota_activos.
     asset_tag: Optional[str] = Field(default=None, max_length=64, index=True)
     created_by: str = Field(default="admin", max_length=64)
     updated_by: str = Field(default="admin", max_length=64)
     created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now, index=True)
+
+
+class NotaActivo(SQLModel, table=True):
+    """Activos involucrados en una nota (solo el texto del tag, sin FK a inventario)."""
+    __tablename__ = "nota_activos"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nota_id: int = Field(foreign_key="notas.id", ondelete="CASCADE", index=True)
+    asset_tag: str = Field(max_length=64, index=True)
+
+
+class NotaDiagrama(SQLModel, table=True):
+    """Diagrama de draw.io (XML) asociado a una nota."""
+    __tablename__ = "nota_diagramas"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nota_id: int = Field(foreign_key="notas.id", ondelete="CASCADE", index=True)
+    title: str = Field(default="Diagrama", max_length=200)
+    xml: str = Field(default="", sa_column=Column(Text))
+    created_by: str = Field(default="admin", max_length=64)
+    updated_by: str = Field(default="admin", max_length=64)
     updated_at: datetime = Field(default_factory=_now, index=True)

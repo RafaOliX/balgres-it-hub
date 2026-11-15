@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-KINDS = {"camara", "nvr", "switch", "ap", "rack", "router", "otro"}
+KINDS = {"camara", "nvr", "switch", "ap", "rack", "router", "computadora", "impresora", "monitor", "telefono", "servidor", "ups", "otro"}
 TRAZO_KINDS = {"libre", "flecha"}
 MAX_POINTS = 1500
 
