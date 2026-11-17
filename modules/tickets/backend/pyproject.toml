@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "balgres-it-tickets"
+version = "0.1.0"
+description = "Módulo de tickets de soporte para balgres-it-hub"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "sqlmodel>=0.0.22",
+    "pydantic>=2.9",
+    "python-multipart>=0.0.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tickets*"]

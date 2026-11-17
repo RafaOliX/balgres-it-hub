@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY apps/core-api /app/apps/core-api
 COPY modules/contacts/backend /app/modules/contacts/backend
 COPY modules/inventario/backend /app/modules/inventario/backend
+COPY modules/notas/backend /app/modules/notas/backend
+COPY modules/planos/backend /app/modules/planos/backend
+COPY modules/tickets/backend /app/modules/tickets/backend
 COPY modules/redes/backend /app/modules/redes/backend
 COPY modules/redes/backend /app/modules/redes/backend
 
@@ -19,6 +22,9 @@ ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN pip install --no-cache-dir -e /app/apps/core-api \
  && pip install --no-cache-dir -e /app/modules/contacts/backend \
  && pip install --no-cache-dir -e /app/modules/redes/backend \
+ && pip install --no-cache-dir -e /app/modules/notas/backend \
+ && pip install --no-cache-dir -e /app/modules/planos/backend \
+ && pip install --no-cache-dir -e /app/modules/tickets/backend \
  && pip install --no-cache-dir -e /app/modules/inventario/backend
 
 # Copiamos el resto (si en dev montamos volumen, esto no afecta)

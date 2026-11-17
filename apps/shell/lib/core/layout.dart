@@ -15,6 +15,9 @@ class AppLayout extends ConsumerWidget {
     _Dest(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Inventario', path: '/inventario', perm: 'inventario.ver'),
     _Dest(icon: Icons.groups_outlined, selectedIcon: Icons.groups, label: 'Empleados', path: '/empleados', perm: 'contactos.ver'),
     _Dest(icon: Icons.lan_outlined, selectedIcon: Icons.lan, label: 'Redes', path: '/redes', perm: 'redes.ver'),
+        _Dest(icon: Icons.confirmation_number_outlined, selectedIcon: Icons.confirmation_number, label: 'Tickets', path: '/tickets', perm: 'tickets.ver'),
+    _Dest(icon: Icons.sticky_note_2_outlined, selectedIcon: Icons.sticky_note_2, label: 'Notas', path: '/notas', perm: 'notas.ver'),
+    _Dest(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Planos', path: '/planos', perm: 'planos.ver'),
     _Dest(icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Usuarios', path: '/usuarios', perm: 'usuarios.ver'),
   ];
 

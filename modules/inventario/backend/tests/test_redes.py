@@ -95,7 +95,8 @@ def test_pistas_de_sistema_y_tipo():
 
 
 def test_escaneo_registra_las_vivas_y_las_edita_a_manual(client, cat, monkeypatch):
-    import redes.router as rr
+    import importlib
+    rr = importlib.import_module("redes.router")
     make_asset(client, "MON-001", cat, serial_number="S1", specs={"IP": "10.9.9.5"})
 
     async def fake(ips):
@@ -121,7 +122,8 @@ def test_escaneo_registra_las_vivas_y_las_edita_a_manual(client, cat, monkeypatc
 
 
 def test_escaneo_sin_register_solo_informa(client, monkeypatch):
-    import redes.router as rr
+    import importlib
+    rr = importlib.import_module("redes.router")
 
     async def fake(ips):
         out = {ip: None for ip in ips}

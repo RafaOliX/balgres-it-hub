@@ -22,3 +22,4 @@ export 'src/widgets/asset_card.dart';
 export 'src/widgets/asset_thumbnail.dart';
 export 'src/widgets/form_fields.dart';
 export 'src/ui/swiss.dart';
+export 'src/widgets/asset_picker.dart';

@@ -8,6 +8,9 @@ COPY apps/shell/pubspec.yaml /src/apps/shell/pubspec.yaml
 COPY packages/ui/pubspec.yaml /src/packages/ui/pubspec.yaml
 COPY modules/contacts/frontend/pubspec.yaml /src/modules/contacts/frontend/pubspec.yaml
 COPY modules/redes/frontend/pubspec.yaml /src/modules/redes/frontend/pubspec.yaml
+COPY modules/notas/frontend/pubspec.yaml /src/modules/notas/frontend/pubspec.yaml
+COPY modules/planos/frontend/pubspec.yaml /src/modules/planos/frontend/pubspec.yaml
+COPY modules/tickets/frontend/pubspec.yaml /src/modules/tickets/frontend/pubspec.yaml
 
 WORKDIR /src/apps/shell
 RUN flutter pub get
@@ -15,6 +18,9 @@ RUN flutter pub get
 COPY packages/ui /src/packages/ui
 COPY modules/contacts/frontend /src/modules/contacts/frontend
 COPY modules/redes/frontend /src/modules/redes/frontend
+COPY modules/notas/frontend /src/modules/notas/frontend
+COPY modules/planos/frontend /src/modules/planos/frontend
+COPY modules/tickets/frontend /src/modules/tickets/frontend
 COPY modules/inventario/frontend /src/modules/inventario/frontend
 COPY apps/shell /src/apps/shell
 

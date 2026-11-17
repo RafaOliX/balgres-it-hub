@@ -1,9 +1,12 @@
 import 'package:balgres_it_contacts/balgres_it_contacts.dart';
 import 'package:balgres_it_inventario/balgres_it_inventario.dart';
+import 'package:balgres_it_notas/balgres_it_notas.dart';
+import 'package:balgres_it_planos/balgres_it_planos.dart';
 import 'package:balgres_it_redes/balgres_it_redes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:balgres_it_tickets/balgres_it_tickets.dart';
 
 import '../pages/dashboard_page.dart';
 import '../pages/login_page.dart';
@@ -17,7 +20,10 @@ const _guards = {
   '/categorias': 'inventario.ver',
   '/empleados': 'contactos.ver',
   '/redes': 'redes.ver',
+  '/notas': 'notas.ver',
+  '/planos': 'planos.ver',
   '/usuarios': 'usuarios.ver',
+  '/tickets': 'tickets.ver',
 };
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -62,6 +68,27 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/categorias', builder: (_, __) => const CategoriesPage()),
           GoRoute(path: '/redes', builder: (_, __) => const RedesPage()),
+          GoRoute(
+            path: '/notas',
+            builder: (_, __) => const NotasPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => NotaEditorPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
+          GoRoute(
+            path: '/planos',
+            builder: (_, __) => const PlanosPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => PlanoViewerPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
+          GoRoute(
+            path: '/tickets',
+            builder: (_, __) => const TicketsPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => TicketDetailPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
           GoRoute(
             path: '/empleados',
             builder: (_, __) => const EmpleadosPage(),

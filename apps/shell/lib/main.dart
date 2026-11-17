@@ -1,5 +1,7 @@
 import 'package:balgres_it_contacts/balgres_it_contacts.dart';
 import 'package:balgres_it_inventario/balgres_it_inventario.dart';
+import 'package:balgres_it_notas/balgres_it_notas.dart';
+import 'package:balgres_it_planos/balgres_it_planos.dart';
 import 'package:balgres_it_redes/balgres_it_redes.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,8 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:balgres_it_ui/balgres_it_ui.dart' show AssetRef, assetPickerProvider, assetRefsProvider;
+import 'package:balgres_it_tickets/balgres_it_tickets.dart';
 
 import 'core/auth.dart';
 import 'core/layout.dart';
@@ -108,8 +112,22 @@ class _BalgresItAppState extends State<BalgresItApp> {
         employeeExtensionsProvider.overrideWithValue([inventarioEmployeeExtension]),
         inventarioApiProvider.overrideWithValue(InventarioApi(baseUrl: _apiBase)),
         redesApiProvider.overrideWithValue(RedesApi(baseUrl: _apiBase)),
+        notasApiProvider.overrideWithValue(NotasApi(baseUrl: _apiBase)),
+        planosApiProvider.overrideWithValue(PlanosApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
+        ticketsApiProvider.overrideWithValue(TicketsApi(baseUrl: _apiBase)),
         authApiProvider.overrideWithValue(AuthApi(baseUrl: _apiBase)),
+                assetPickerProvider.overrideWithValue(showAssetPicker),
+        assetRefsProvider.overrideWith((ref) {
+          final items = ref.watch(inventarioListProvider).valueOrNull ?? const <ItAsset>[];
+          return {
+            for (final a in items)
+              a.assetTag: AssetRef(
+                tag: a.assetTag, title: '${a.brand} ${a.model}'.trim(), category: a.category,
+                imageUrl: a.imageUrl, status: a.status, location: a.location,
+              ),
+          };
+        }),
       ],
       child: const _ThemedApp(),
     );
