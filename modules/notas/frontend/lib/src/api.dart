@@ -1,5 +1,9 @@
-import 'package:dio/dio.dart';
+import 'dart:typed_data';
+
 import 'package:balgres_it_ui/auth_session.dart';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart' show PlatformFile;
+import 'package:file_saver/file_saver.dart';
 
 import 'models.dart';
 
@@ -49,7 +53,11 @@ class NotasApi {
     return Nota.fromJson(r.data!);
   }
 
-  Future<void> actualizar(int id, Map<String, dynamic> body) async => await _dio.put('/notas/$id', data: body);
+  Future<Nota> actualizar(int id, Map<String, dynamic> body) async {
+    final r = await _dio.put<Map<String, dynamic>>('/notas/$id', data: body);
+    return Nota.fromJson(r.data!);
+  }
+
   Future<void> eliminar(int id) async => await _dio.delete('/notas/$id');
 
   /// Planos que enlazan a esta nota (los sirve el módulo planos). Sin permiso o sin módulo: lista vacía.
@@ -60,6 +68,22 @@ class NotasApi {
     } catch (_) {
       return const [];
     }
+  }
+
+  // ---- historial
+  Future<List<NotaRevision>> historial(int id) async {
+    final r = await _dio.get<List<dynamic>>('/notas/$id/historial');
+    return (r.data ?? []).map((e) => NotaRevision.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<NotaRevision> version(int id, int rid) async {
+    final r = await _dio.get<Map<String, dynamic>>('/notas/$id/historial/$rid');
+    return NotaRevision.fromJson(r.data!);
+  }
+
+  Future<Nota> restaurar(int id, int rid) async {
+    final r = await _dio.post<Map<String, dynamic>>('/notas/$id/historial/$rid/restore');
+    return Nota.fromJson(r.data!);
   }
 
   // ---- diagramas (draw.io)
@@ -73,13 +97,39 @@ class NotasApi {
     return NotaDiagrama.fromJson(r.data!);
   }
 
-  Future<NotaDiagrama> crearDiagrama(int notaId, String title, String xml) async {
-    final r = await _dio.post<Map<String, dynamic>>('/notas/$notaId/diagramas', data: {'title': title, 'xml': xml});
+  Future<NotaDiagrama> crearDiagrama(int notaId, String title, String xml, {String? preview}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/notas/$notaId/diagramas', data: {'title': title, 'xml': xml, 'preview': preview});
     return NotaDiagrama.fromJson(r.data!);
   }
 
-  Future<void> actualizarDiagrama(int notaId, int id, String title, String xml) async =>
-      await _dio.put('/notas/$notaId/diagramas/$id', data: {'title': title, 'xml': xml});
+  Future<void> actualizarDiagrama(int notaId, int id, String title, String xml, {String? preview}) async =>
+      await _dio.put('/notas/$notaId/diagramas/$id', data: {'title': title, 'xml': xml, 'preview': preview});
 
   Future<void> eliminarDiagrama(int notaId, int id) async => await _dio.delete('/notas/$notaId/diagramas/$id');
+
+  // ---- archivos adjuntos
+  Future<List<NotaArchivo>> listarArchivos(int notaId) async {
+    final r = await _dio.get<List<dynamic>>('/notas/$notaId/archivos');
+    return (r.data ?? []).map((e) => NotaArchivo.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> subirArchivos(int notaId, List<PlatformFile> files) async {
+    final form = FormData.fromMap({
+      'files': [for (final f in files) MultipartFile.fromBytes(f.bytes!, filename: f.name)],
+    });
+    await _dio.post('/notas/$notaId/archivos', data: form, options: Options(contentType: 'multipart/form-data', sendTimeout: const Duration(minutes: 10)));
+  }
+
+  Future<void> descargarArchivo(int notaId, NotaArchivo a) async {
+    final r = await _dio.get<List<int>>('/notas/$notaId/archivos/${a.id}/download', options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(minutes: 10)));
+    final dot = a.name.lastIndexOf('.');
+    await FileSaver.instance.saveFile(
+      name: dot > 0 ? a.name.substring(0, dot) : a.name,
+      bytes: Uint8List.fromList(r.data!),
+      ext: dot > 0 ? a.name.substring(dot + 1) : '',
+      mimeType: MimeType.other,
+    );
+  }
+
+  Future<void> eliminarArchivo(int notaId, int id) async => await _dio.delete('/notas/$notaId/archivos/$id');
 }

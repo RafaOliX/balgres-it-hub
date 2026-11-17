@@ -17,6 +17,10 @@ dependencies:
     path: ../../../packages/ui
   balgres_it_contacts:
     path: ../../contacts/frontend
+  file_picker: ^8.1.2
+  file_saver: ^0.2.14
+  flutter_markdown: ^0.7.4
+  markdown: ^7.2.2
 
 dev_dependencies:
   flutter_test:

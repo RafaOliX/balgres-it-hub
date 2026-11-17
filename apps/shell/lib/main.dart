@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:balgres_it_ui/balgres_it_ui.dart' show AssetRef, assetPickerProvider, assetRefsProvider;
+import 'package:balgres_it_tickets/balgres_it_tickets.dart';
 
 import 'core/auth.dart';
 import 'core/layout.dart';
@@ -114,6 +115,7 @@ class _BalgresItAppState extends State<BalgresItApp> {
         notasApiProvider.overrideWithValue(NotasApi(baseUrl: _apiBase)),
         planosApiProvider.overrideWithValue(PlanosApi(baseUrl: _apiBase)),
         appHostBaseProvider.overrideWithValue(_hostBase),
+        ticketsApiProvider.overrideWithValue(TicketsApi(baseUrl: _apiBase)),
         authApiProvider.overrideWithValue(AuthApi(baseUrl: _apiBase)),
                 assetPickerProvider.overrideWithValue(showAssetPicker),
         assetRefsProvider.overrideWith((ref) {

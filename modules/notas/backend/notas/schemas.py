@@ -62,6 +62,9 @@ class NotaListItem(BaseModel):
     asset_tag: Optional[str]
     asset_tags: List[str] = []
     diagram_count: int = 0
+    file_count: int = 0
+    created_by: str = ""
+    created_at: datetime
     updated_by: str
     updated_at: datetime
 
@@ -82,8 +85,14 @@ class NotaRead(BaseModel):
 class DiagramaIn(BaseModel):
     title: str = Field(default="Diagrama", max_length=200)
     xml: str = Field(default="", max_length=2_000_000)
+    preview: Optional[str] = Field(default=None, max_length=700_000)  # data:image/png;base64,...
 
     @field_validator("title")
     @classmethod
     def _t(cls, v: str) -> str:
         return " ".join((v or "").split()) or "Diagrama"
+
+    @field_validator("preview")
+    @classmethod
+    def _p(cls, v: Optional[str]) -> Optional[str]:
+        return v if v and v.startswith("data:image/png;base64,") else None

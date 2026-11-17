@@ -19,6 +19,7 @@ dependencies = [
     "balgres-it-redes @ file:///app/modules/redes/backend",
     "balgres-it-notas @ file:///app/modules/notas/backend",
     "balgres-it-planos @ file:///app/modules/planos/backend",
+    "balgres-it-tickets @ file:///app/modules/tickets/backend",
 ]
 
 [tool.setuptools.packages.find]

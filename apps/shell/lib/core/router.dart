@@ -6,6 +6,7 @@ import 'package:balgres_it_redes/balgres_it_redes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:balgres_it_tickets/balgres_it_tickets.dart';
 
 import '../pages/dashboard_page.dart';
 import '../pages/login_page.dart';
@@ -22,6 +23,7 @@ const _guards = {
   '/notas': 'notas.ver',
   '/planos': 'planos.ver',
   '/usuarios': 'usuarios.ver',
+  '/tickets': 'tickets.ver',
 };
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -78,6 +80,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const PlanosPage(),
             routes: [
               GoRoute(path: ':id', builder: (_, state) => PlanoViewerPage(id: int.parse(state.pathParameters['id']!))),
+            ],
+          ),
+          GoRoute(
+            path: '/tickets',
+            builder: (_, __) => const TicketsPage(),
+            routes: [
+              GoRoute(path: ':id', builder: (_, state) => TicketDetailPage(id: int.parse(state.pathParameters['id']!))),
             ],
           ),
           GoRoute(

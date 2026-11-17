@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
@@ -8,10 +9,11 @@ import 'package:web/web.dart' as web;
 int _seq = 0;
 
 /// draw.io autoalojado (Caddy lo sirve en /drawio/) incrustado con su protocolo postMessage.
+/// En cada autoguardado pide también un PNG (preview). Si el export no llega en 4 s, guarda solo el XML.
 class DrawioFrame extends StatefulWidget {
   final String xml;
   final bool readOnly;
-  final void Function(String xml) onSave;
+  final void Function(String xml, String? preview) onSave;
   const DrawioFrame({super.key, required this.xml, required this.onSave, this.readOnly = false});
 
   @override
@@ -22,6 +24,8 @@ class _DrawioFrameState extends State<DrawioFrame> {
   late final String _viewType = 'drawio-frame-${_seq++}';
   late final web.HTMLIFrameElement _iframe;
   late final JSFunction _listener = _onMessage.toJS;
+  String _lastXml = '';
+  Timer? _fallback;
 
   @override
   void initState() {
@@ -38,6 +42,7 @@ class _DrawioFrameState extends State<DrawioFrame> {
 
   @override
   void dispose() {
+    _fallback?.cancel();
     web.window.removeEventListener('message', _listener);
     super.dispose();
   }
@@ -61,8 +66,18 @@ class _DrawioFrameState extends State<DrawioFrame> {
       _post({'action': 'load', 'autosave': 1, 'xml': widget.xml});
     } else if (ev == 'autosave' || ev == 'save') {
       final xml = msg['xml'];
-      if (xml is String && !widget.readOnly) widget.onSave(xml);
+      if (xml is String && !widget.readOnly) {
+        _lastXml = xml;
+        _fallback?.cancel();
+        _fallback = Timer(const Duration(seconds: 4), () => widget.onSave(_lastXml, null));
+        _post({'action': 'export', 'format': 'png', 'width': 640, 'border': 10, 'background': '#ffffff'});
+      }
       if (ev == 'save') _post({'action': 'status', 'modified': false});
+    } else if (ev == 'export') {
+      _fallback?.cancel();
+      final data = msg['data'];
+      final ok = data is String && data.startsWith('data:image/png;base64,') && data.length < 600000;
+      if (_lastXml.isNotEmpty && !widget.readOnly) widget.onSave(_lastXml, ok ? data : null);
     }
   }
 

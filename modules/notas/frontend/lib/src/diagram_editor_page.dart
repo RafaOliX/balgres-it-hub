@@ -24,6 +24,7 @@ class _DiagramEditorPageState extends ConsumerState<DiagramEditorPage> {
   int? _did;
   String _xml = '';
   String? _pending;
+  String? _pendingPreview;
   bool _loading = false, _busy = false;
   String _status = '';
   Timer? _debounce;
@@ -64,10 +65,12 @@ class _DiagramEditorPageState extends ConsumerState<DiagramEditorPage> {
     }
   }
 
-  void _onXml(String xml) {
+  // Único _onXml. Los dos argumentos son requeridos; el título pasa `null`.
+  void _onXml(String xml, String? preview) {
     if (!_canEdit) return;
     _xml = xml;
     _pending = xml;
+    if (preview != null) _pendingPreview = preview;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 1200), _persist);
   }
@@ -78,22 +81,26 @@ class _DiagramEditorPageState extends ConsumerState<DiagramEditorPage> {
       _debounce = Timer(const Duration(seconds: 1), _persist);
       return;
     }
+
     final xml = _pending;
     if (xml == null) return;
+    final preview = _pendingPreview;
     _pending = null;
+    _pendingPreview = null;
     _busy = true;
     if (mounted) setState(() => _status = 'Guardando…');
     try {
       final title = _title.text.trim().isEmpty ? 'Diagrama' : _title.text.trim();
       if (_did == null) {
-        _did = (await _api.crearDiagrama(widget.notaId, title, xml)).id;
+        _did = (await _api.crearDiagrama(widget.notaId, title, xml, preview: preview)).id;
       } else {
-        await _api.actualizarDiagrama(widget.notaId, _did!, title, xml);
+        await _api.actualizarDiagrama(widget.notaId, _did!, title, xml, preview: preview);
       }
       final t = TimeOfDay.now();
       if (mounted) setState(() => _status = 'Guardado ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
     } catch (e) {
       _pending ??= xml;
+      _pendingPreview ??= preview;
       if (mounted) setState(() => _status = 'Error al guardar: ${apiError(e)}');
     } finally {
       _busy = false;
@@ -110,16 +117,23 @@ class _DiagramEditorPageState extends ConsumerState<DiagramEditorPage> {
           child: TextField(
             controller: _title,
             readOnly: !_canEdit,
-            onSubmitted: (_) => _onXml(_xml),
-            onEditingComplete: () => _onXml(_xml),
+            onSubmitted: (_) => _onXml(_xml, null),
+            onEditingComplete: () => _onXml(_xml, null),
             decoration: const InputDecoration(hintText: 'Título del diagrama'),
           ),
         ),
         actions: [
-          Center(child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(_status, style: TextStyle(fontSize: 12, color: c.muted)))),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Text(_status, style: TextStyle(fontSize: 12, color: c.muted)),
+            ),
+          ),
         ],
       ),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : DrawioFrame(xml: _xml, readOnly: !_canEdit, onSave: _onXml),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : DrawioFrame(xml: _xml, readOnly: !_canEdit, onSave: _onXml),
     );
   }
 }

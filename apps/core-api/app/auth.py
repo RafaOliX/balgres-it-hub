@@ -17,7 +17,8 @@ from contacts.db import engine, get_session
 
 SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "12") or 12)
 
-MODULES = {"inventario": "Inventario", "contactos": "Empleados", "redes": "Redes", "notas": "Notas", "planos": "Planos", "usuarios": "Usuarios y roles"}
+MODULES = {"inventario": "Inventario", "contactos": "Empleados", "redes": "Redes", "notas": "Notas", "planos": "Planos", "tickets": "Tickets", "usuarios": "Usuarios y roles", "sistema": "Sistema", "auditoria": "Auditoría"}
+
 ACTIONS = {"ver": "Ver", "editar": "Crear y editar", "eliminar": "Eliminar"}
 ALL_PERMS = {f"{m}.{a}" for m in MODULES for a in ACTIONS}
 _METHOD_ACTION = {"GET": "ver", "HEAD": "ver", "OPTIONS": "ver", "DELETE": "eliminar"}

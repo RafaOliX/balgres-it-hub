@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class DrawioFrame extends StatelessWidget {
   final String xml;
   final bool readOnly;
-  final void Function(String xml) onSave;
+  final void Function(String xml, String? preview) onSave;
   const DrawioFrame({super.key, required this.xml, required this.onSave, this.readOnly = false});
 
   @override
