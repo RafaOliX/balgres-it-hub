@@ -3,6 +3,7 @@
 Plataforma modular de herramientas internas del departamento de IT de Balgres.
 Módulos: **Inventario**, **Empleados (contacts)** y **Redes**.
 
+
 Stack: Flutter (Web/Android) · FastAPI + SQLModel · PostgreSQL 16 · Caddy · Docker Compose.
 
 ## Instalar (Linux o WSL2, 3 comandos)
